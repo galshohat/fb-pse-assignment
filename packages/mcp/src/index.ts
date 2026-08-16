@@ -3,6 +3,8 @@ import { ConfigError, createChainClients, TodoService } from '@todo/core';
 import { pino } from 'pino';
 import { AuditLog } from './audit.js';
 import { CredentialStore } from './auth/store.js';
+import { createOAuthRoutes } from './auth/oauth/router.js';
+import { TodoOAuthProvider } from './auth/oauth/provider.js';
 import { AccessTokenRegistry, CredentialVerifier } from './auth/verifier.js';
 import { loadMcpConfig } from './config.js';
 import { createMcpApp } from './server.js';
@@ -30,10 +32,30 @@ function start(): void {
   const verifier = new CredentialVerifier(store, accessTokens);
   const audit = new AuditLog(join(config.dataDir, 'audit.jsonl'), logger);
 
+  const provider = new TodoOAuthProvider({
+    store,
+    accessTokens,
+    verifier,
+    accessTokenTtlSeconds: config.accessTokenTtlSeconds,
+    refreshTokenTtlSeconds: config.refreshTokenTtlSeconds,
+  });
+
   const clients = createChainClients(config.core);
   const service = new TodoService(clients, config.core);
 
-  const app = createMcpApp({ service, audit, verifier, logger });
+  const app = createMcpApp({
+    service,
+    audit,
+    verifier,
+    logger,
+    publicUrl: config.publicUrl,
+    oauthRoutes: createOAuthRoutes({
+      provider,
+      store,
+      issuerUrl: config.publicUrl,
+      logger,
+    }),
+  });
 
   const liveKeys = store.apiKeys.filter((key) => !key.revokedAt).length;
   if (liveKeys === 0) {

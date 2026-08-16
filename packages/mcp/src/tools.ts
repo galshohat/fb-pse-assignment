@@ -179,9 +179,8 @@ function guard<Args>(
       });
     };
 
-    // Defence in depth. A caller without the scope was never offered this
-    // tool, so reaching here means something upstream is wrong — which is
-    // exactly when a second check earns its place.
+    // The only authorization gate. Tools are offered to everyone, so this
+    // check is what separates a viewer from an operator.
     if (!hasScope(scopes, required)) {
       const reason = describeMissingScope(required, scopes);
       finish('denied', { reason });

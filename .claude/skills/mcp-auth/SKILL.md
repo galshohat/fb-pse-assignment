@@ -32,17 +32,16 @@ seam where authentication ends and authorization begins:
 Adding a third path (a real identity provider) means writing one more verifier, not touching
 tool code. Keep it that way.
 
-## Enforcement is two-layered
+## Enforcement happens in the handler
 
-1. **Visibility.** The server is built per request from the caller's `AuthInfo`, so a
-   `tasks:read` client never sees `addTask` or `completeTask` in `tools/list` at all. A tool
-   that is not offered cannot be misused.
-2. **Execution.** Each write handler re-checks its scope from `ctx.http.authInfo` anyway. The
-   check must never be silent: return an error result naming the required scope and the scopes
-   the caller actually has.
+The server is built per request from the caller's `AuthInfo`, but every tool is offered to
+every authenticated caller. The scope check inside the handler is the gate, and it must name
+the scope required and the scopes actually held.
 
-Layer 1 is ergonomics, layer 2 is the actual guarantee. Never remove layer 2 on the grounds
-that layer 1 makes it unreachable.
+Hiding write tools from read-only credentials was tried and rejected. An unregistered tool
+answers `Tool addTask not found`, which reads as "the server is broken" rather than "your
+credential is not sufficient" — the opposite of refusing clearly. What a read-only caller gets
+instead is a warning in the tool description, so a model can tell before calling.
 
 ## Confirmation before writing
 

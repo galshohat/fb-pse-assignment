@@ -11,8 +11,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc --build",
-    "typecheck": "tsc --build --force",
+    "build": "tsc --build && npm run build --workspace @todo/web",
+    "typecheck": "tsc --build --force && npm run typecheck --workspace @todo/web",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -20,7 +20,7 @@
     "format:check": "prettier --check .",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "clean": "tsc --build --clean",
-    "smoke": "npm run build && node --env-file-if-exists=.env node_modules/.bin/tsx scripts/smoke.ts",
+    "smoke": "tsc --build && node --env-file-if-exists=.env node_modules/.bin/tsx scripts/smoke.ts",
     "dev:api": "npm run dev --workspace @todo/api",
     "dev:mcp": "npm run dev --workspace @todo/mcp",
     "dev:web": "npm run dev --workspace @todo/web"
@@ -29,6 +29,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.2.0",
     "eslint": "^10.8.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.6.2",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",

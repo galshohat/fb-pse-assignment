@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -7,6 +8,12 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  // The rules of hooks are not style: breaking them produces components that
+  // work until a re-render order changes. Only the web package has components.
+  {
+    files: ['packages/web/**/*.tsx'],
+    extends: [reactHooks.configs.flat.recommended],
+  },
   {
     rules: {
       // Unused variables are errors, but an underscore prefix marks an

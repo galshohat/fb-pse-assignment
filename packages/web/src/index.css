@@ -1,0 +1,138 @@
+@import 'tailwindcss';
+
+/* --------------------------------------------------------------------------
+   Design tokens.
+
+   Components never name a colour: they use semantic utilities (`bg-surface`,
+   `text-muted`, `border-line`) that resolve through the variables below, so a
+   theme is a change to this file and to nothing else.
+
+   Theming uses `light-dark()`, which reads the element's `color-scheme`. The
+   root declares `light dark`, meaning "follow the operating system"; setting
+   `data-theme` pins one. That covers all three states — system, explicit light,
+   explicit dark — with a single palette rather than three copies of it.
+   -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces. Neutrals carry a slight blue bias so they sit with the accent
+     rather than fighting it. */
+  --canvas: light-dark(#eef1f7, #0a0d14);
+  --surface: light-dark(#ffffff, #131822);
+  --sunk: light-dark(#e5eaf2, #0e131c);
+  --line: light-dark(#d9dfe9, #222a38);
+  --line-strong: light-dark(#bcc5d4, #333c4e);
+
+  /* Text. */
+  --fg: light-dark(#0f1420, #e9edf5);
+  --muted: light-dark(#525c72, #99a3b8);
+  --subtle: light-dark(#7a8399, #6b7691);
+
+  /* One accent, used for actions and focus and nothing else. */
+  --accent: light-dark(#2f3fd1, #8b98ff);
+  --accent-fg: light-dark(#ffffff, #0a0d14);
+  --accent-soft: light-dark(#e8eafd, #1b2140);
+
+  /* Status. Never used alone: every one of these is paired with a label. */
+  --ok: light-dark(#0e7a4d, #3fcf8e);
+  --ok-soft: light-dark(#e0f4ea, #0f2a20);
+  --warn: light-dark(#8a5300, #f0b342);
+  --warn-soft: light-dark(#fbefda, #2a2110);
+  --danger: light-dark(#b21e39, #ff7f8e);
+  --danger-soft: light-dark(#fbe5e9, #2c1218);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --font-sans: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  body {
+    background: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Chain data — ids, hashes, gas, block numbers — is set in the mono face with
+     tabular figures so digits line up column to column. */
+  code,
+  kbd,
+  samp,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+@layer utilities {
+  /* Small uppercase labels: strip captions, column headers, status pills. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  /* The value a label points at. Same size and face, deliberately NOT
+     uppercased: addresses and hashes are checksummed by letter case, so
+     changing it would display something that is not the value. */
+  .readout {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

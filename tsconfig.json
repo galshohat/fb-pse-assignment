@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Solution-style root config: it holds no sources of its own and simply
+  // points `tsc --build` at every package in the workspace.
+  "files": [],
+  "references": []
+}

@@ -1,0 +1,23 @@
+# Dependencies & build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment & secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Runtime state written by the services (credentials, audit trail)
+data/
+*.log
+
+# Source material and personal notes that are not part of the delivery
+*.pdf
+*.docx
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/

@@ -21,6 +21,9 @@ the REST and MCP layers cannot drift apart. See [docs/ARCHITECTURE.md](docs/ARCH
 
 ## Quick start
 
+Node.js 22.9 or newer, and a Sepolia wallet holding a little testnet ETH. No database, no
+local chain, nothing else to install.
+
 ```bash
 npm install
 cp .env.example .env     # then set WALLET_PRIVATE_KEY
@@ -69,16 +72,9 @@ returned rather than swallowed, so the transaction can still be tracked.
 
 ## Configuration
 
-All services read the single `.env` file at the repository root. `.env.example` documents
-every variable; only `WALLET_PRIVATE_KEY` has no usable default.
-
-| Variable             | Required | Default           | Purpose                             |
-| -------------------- | -------- | ----------------- | ----------------------------------- |
-| `WALLET_PRIVATE_KEY` | yes      | —                 | Testnet key that signs transactions |
-| `RPC_URLS`           | no       | four public RPCs  | Sepolia endpoints, tried in order   |
-| `CONTRACT_ADDRESS`   | no       | deployed TodoList | Contract the services talk to       |
-| `API_PORT`           | no       | `3000`            | REST API port                       |
-| `MCP_PORT`           | no       | `3001`            | MCP server port                     |
+All services read the single `.env` file at the repository root. Only
+`WALLET_PRIVATE_KEY` has no usable default — everything else works as shipped. `.env.example`
+documents each variable, and [SETUP.md](docs/SETUP.md#configuration) has the full table.
 
 ## Documentation
 
@@ -89,12 +85,3 @@ every variable; only `WALLET_PRIVATE_KEY` has no usable default.
 | [MCP.md](docs/MCP.md)                           | MCP tools, authentication, access control     |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)         | How it works and why it is built this way     |
 | [FOR-STAKEHOLDERS.md](docs/FOR-STAKEHOLDERS.md) | Plain-language overview, no blockchain needed |
-
-## Layout
-
-```
-packages/core   Blockchain logic: contract client, transaction lifecycle, errors
-packages/api    REST API over core
-packages/mcp    MCP server over core, with OAuth 2.1 and scoped API keys
-packages/web    React web client
-```

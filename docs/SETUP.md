@@ -1,11 +1,9 @@
 # Setup
 
-Everything here was run verbatim on a clean checkout before it was written down.
-
 ## Prerequisites
 
-- **Node.js 20.10 or newer** (`node --version`). The services use
-  `--env-file-if-exists`, which needs it.
+- **Node.js 22.9 or newer** (`node --version`). The start scripts use
+  `--env-file-if-exists`, which Node added in 22.9.
 - **A funded Sepolia wallet.** Writes spend testnet gas. A key with no balance
   reads fine and fails on the first write.
 - Nothing else — no database, no Docker, no local chain.
@@ -80,6 +78,12 @@ Same three services, same ports, one command. It needs the same `.env`:
 docker compose up --build
 ```
 
+That streams the build and then the services' logs. To see the state on its own:
+
+```bash
+docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"
+```
+
 ```text
 SERVICE   STATUS                    PORTS
 api       Up 15 seconds (healthy)   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
@@ -87,8 +91,9 @@ mcp       Up 15 seconds (healthy)   0.0.0.0:3001->3001/tcp, [::]:3001->3001/tcp
 web       Up 15 seconds             0.0.0.0:5173->80/tcp, [::]:5173->80/tcp
 ```
 
-The API and the MCP server carry health checks, so `healthy` above means each
-one answered its own `/health`, not merely that the process started.
+The API and the MCP server carry health checks, so `healthy` means each one
+answered its own `/health`, not merely that the process started. The web
+container has none: it is nginx serving static files, with nothing to ask.
 
 The ports are deliberately the ones the npm scripts use, so every URL in this
 documentation is right either way and `CORS_ORIGIN` needs no second value. The
@@ -181,8 +186,21 @@ blockchain-todo: http://localhost:3001/mcp (HTTP) - ! Needs authentication
 That is the flow working, not failing. The server answered with a `401` and a
 pointer to its metadata; the client read it and knows it must authenticate.
 Running `/mcp` inside Claude Code opens the browser, where you approve the
-connection and choose a role — **viewer** to look, **operator** to spend gas.
-The token that comes back lasts 15 minutes and is refreshed silently.
+connection and choose a role: **viewer** to look, **operator** to spend gas, or
+**admin** to also manage credentials. The token that comes back lasts 15
+minutes and is refreshed silently.
+
+### Other MCP clients
+
+Nothing above is specific to one client. This is an ordinary remote MCP server
+over Streamable HTTP with OAuth discovery, so any client that supports remote
+servers can use `http://localhost:3001/mcp` and follow the same flow — in
+Claude Desktop, for instance, by adding it as a custom connector.
+
+> Only the Claude Code path above was exercised against this server, so treat
+> the specifics of any other client's interface as a pointer rather than a
+> tested procedure. If a client cannot do a browser flow at all, the API key
+> below works everywhere.
 
 ### An API key, for anything without a browser
 
@@ -282,8 +300,8 @@ revoked. `npm run keys -w @todo/mcp -- list` shows the status of each.
 
 **Registering a client returns `429`** — dynamic client registration is limited
 to 20 an hour by the SDK, which is easy to exhaust while testing the flow
-repeatedly. Wait out the window, or use an API key in the meantime; restarting
-the server does not reset it, since the limiter counts per process uptime.
+repeatedly. The count is held in memory, so restarting the server clears it;
+otherwise wait out the window or use an API key in the meantime.
 
 ## Layout
 

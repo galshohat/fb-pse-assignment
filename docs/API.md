@@ -141,7 +141,7 @@ Every failure has the same shape:
 | 409    | `TASK_ALREADY_COMPLETED` | Someone already completed it — a normal outcome on a shared list |
 | 413    | `PAYLOAD_TOO_LARGE`      | Body over 16 kB                                                  |
 | 422    | `TRANSACTION_REVERTED`   | The contract declined it                                         |
-| 429    | `RATE_LIMITED`           | More than 10 writes in a minute from one address                 |
+| 429    | `RATE_LIMITED`           | More than 10 writes in a minute from one client IP               |
 | 500    | `INTERNAL_ERROR`         | A bug here. Nothing about internals is returned                  |
 | 502    | `UNEXPECTED_CHAIN_ERROR` | The chain failed in a way we do not recognise                    |
 | 503    | `CHAIN_UNAVAILABLE`      | Every RPC endpoint is unreachable. Sends `Retry-After: 5`        |
@@ -198,9 +198,10 @@ under-specified API look broken when it is behaving exactly as designed.
 ## Hardening
 
 - **CORS** allows exactly one origin, from `CORS_ORIGIN`. Not a wildcard.
-- **Writes are rate limited** to 10 per minute per address. Reads are not:
-  reads are free, writes spend from a shared wallet, and an unthrottled caller
-  drains it.
+- **Writes are rate limited** to 10 per minute per client IP — the wallet is
+  shared, and an unthrottled caller drains it. Reads are free and unlimited.
+  Behind a proxy this keys on the forwarded client address, with exactly one
+  hop trusted so the value cannot be spoofed by the caller.
 - **Bodies are capped at 16 kB.** Descriptions are capped at 500 characters, so
   anything larger is not ours.
 - **helmet** sets the standard security headers; the framework banner is off.

@@ -60,7 +60,8 @@ const EMPTY_STATE: PersistedState = {
  */
 export class CredentialStore {
   private state: PersistedState;
-  private loadedMtimeMs = 0;
+  /** Identifies the exact file contents currently held in `state`. */
+  private loadedStamp = '';
 
   constructor(private readonly filePath: string) {
     this.state = this.read();
@@ -81,11 +82,13 @@ export class CredentialStore {
   }
 
   addApiKey(record: ApiKeyRecord): void {
+    this.reloadIfChanged();
     this.state.apiKeys.push(record);
     this.write();
   }
 
   revokeApiKey(id: string): boolean {
+    this.reloadIfChanged();
     const record = this.state.apiKeys.find((key) => key.id === id && !key.revokedAt);
     if (!record) return false;
 
@@ -102,6 +105,7 @@ export class CredentialStore {
   }
 
   addOAuthClient(record: OAuthClientRecord): void {
+    this.reloadIfChanged();
     this.state.oauthClients.push(record);
     this.write();
   }
@@ -112,6 +116,7 @@ export class CredentialStore {
   }
 
   addRefreshToken(record: RefreshTokenRecord): void {
+    this.reloadIfChanged();
     this.state.refreshTokens.push(record);
     this.write();
   }
@@ -128,6 +133,7 @@ export class CredentialStore {
    * than issuing a second set of tokens from it.
    */
   consumeRefreshToken(hash: string): void {
+    this.reloadIfChanged();
     const record = this.state.refreshTokens.find((token) => token.hash === hash);
     if (record) record.usedAt = new Date().toISOString();
     this.write();
@@ -148,22 +154,40 @@ export class CredentialStore {
    * The credential CLI runs separately from the server, so a key revoked on
    * the command line has to stop working in the already-running server
    * immediately — otherwise revocation is a promise the system does not keep.
-   * Comparing the file's modification time makes that a stat call per lookup
-   * rather than a full read.
+   * Comparing a stamp of the file makes that a stat call per lookup rather
+   * than a full read.
+   *
+   * Called before writes as well as reads. A write serializes the whole
+   * in-memory state, so writing from a stale copy would silently undo whatever
+   * the other process did in the meantime — including a revocation.
+   *
+   * What this does not do is make the read-modify-write atomic; two processes
+   * writing in the same instant can still lose one of the changes. Closing that
+   * properly means a lock or a shared datastore, which is the documented next
+   * step for this store rather than something a stat call can fix.
    */
   private reloadIfChanged(): void {
     try {
-      const { mtimeMs } = statSync(this.filePath);
-      if (mtimeMs !== this.loadedMtimeMs) this.state = this.read();
+      if (this.stamp() !== this.loadedStamp) this.state = this.read();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
 
+  /**
+   * Nanosecond mtime and size together. Millisecond resolution alone is not
+   * enough: two writes inside one millisecond share an mtime, and the second
+   * would then be invisible.
+   */
+  private stamp(): string {
+    const { mtimeNs, size } = statSync(this.filePath, { bigint: true });
+    return `${mtimeNs}:${size}`;
+  }
+
   private read(): PersistedState {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as PersistedState;
-      this.loadedMtimeMs = statSync(this.filePath).mtimeMs;
+      this.loadedStamp = this.stamp();
       return { ...EMPTY_STATE, ...parsed };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -184,7 +208,7 @@ export class CredentialStore {
     const temporary = `${this.filePath}.${randomBytes(6).toString('hex')}.tmp`;
     writeFileSync(temporary, JSON.stringify(this.state, null, 2), { mode: 0o600 });
     renameSync(temporary, this.filePath);
-    this.loadedMtimeMs = statSync(this.filePath).mtimeMs;
+    this.loadedStamp = this.stamp();
   }
 }
 

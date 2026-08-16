@@ -102,6 +102,31 @@ describe('credential storage', () => {
     expect(reader.findApiKeyBySecret(secret)?.revokedAt).toBeTruthy();
   });
 
+  it('does not undo a change made by another process when it writes', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'todo-mcp-'));
+    const server = CredentialStore.forDataDir(directory);
+    const cli = CredentialStore.forDataDir(directory);
+
+    // The CLI issues a key and revokes it while the server holds an older copy
+    // of the file in memory.
+    const secret = issueKey(cli, { id: 'revoked-by-cli' });
+    cli.revokeApiKey('revoked-by-cli');
+
+    // The server then writes for an unrelated reason — an OAuth client
+    // registering, say. Writing its stale state would erase the revocation, and
+    // the key would start working again.
+    server.addOAuthClient({
+      clientId: 'client-1',
+      clientName: 'Something',
+      redirectUris: ['http://localhost/callback'],
+      createdAt: new Date().toISOString(),
+    });
+
+    const fresh = CredentialStore.forDataDir(directory);
+    expect(fresh.findApiKeyBySecret(secret)?.revokedAt).toBeTruthy();
+    expect(fresh.oauthClients).toHaveLength(1);
+  });
+
   it('survives a corrupt or absent file without inventing credentials', () => {
     const directory = mkdtempSync(join(tmpdir(), 'todo-mcp-'));
     expect(CredentialStore.forDataDir(directory).apiKeys).toEqual([]);

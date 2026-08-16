@@ -30,7 +30,7 @@ file, a log line, or an error message. `.env` is git-ignored — keep it that wa
 Check the workspace before running anything:
 
 ```bash
-npm run verify      # typecheck, lint, 124 tests. Touches no network
+npm run verify      # typecheck, lint, 131 tests. Touches no network
 ```
 
 ## Run the services
@@ -71,6 +71,42 @@ The API also documents itself at
 > The web client's port is fixed. The API allows exactly one browser origin, so
 > starting on 5174 instead would turn a busy port into a confusing CORS error.
 > If 5173 is taken, free it rather than changing the port.
+
+## Or run it all in containers
+
+Same three services, same ports, one command. It needs the same `.env`:
+
+```bash
+docker compose up --build
+```
+
+```text
+SERVICE   STATUS                    PORTS
+api       Up 15 seconds (healthy)   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+mcp       Up 15 seconds (healthy)   0.0.0.0:3001->3001/tcp, [::]:3001->3001/tcp
+web       Up 15 seconds             0.0.0.0:5173->80/tcp, [::]:5173->80/tcp
+```
+
+The API and the MCP server carry health checks, so `healthy` above means each
+one answered its own `/health`, not merely that the process started.
+
+The ports are deliberately the ones the npm scripts use, so every URL in this
+documentation is right either way and `CORS_ORIGIN` needs no second value. The
+web client is built into static files and served by nginx here, rather than run
+through the Vite dev server.
+
+Credentials and the audit trail live on a named volume, so they survive a
+rebuild. The credential CLI runs inside the container:
+
+```bash
+docker compose exec mcp node packages/mcp/dist/cli.js issue --role operator --label "Claude Code" --days 7
+docker compose exec mcp node packages/mcp/dist/cli.js list
+```
+
+```bash
+docker compose down          # stop, keep the credentials
+docker compose down -v       # stop and discard them
+```
 
 ## Prove it end to end
 
@@ -247,4 +283,6 @@ packages/web    React web client
 scripts/        smoke.ts — the live end-to-end check
 docs/           This documentation
 data/           Runtime state: hashed credentials, audit log. Git-ignored
+Dockerfile      One file, three images — one target per service
+docker/         nginx configuration for the web image
 ```

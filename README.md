@@ -35,6 +35,12 @@ npm run dev:mcp          # MCP server    → http://localhost:3001
 npm run dev:web          # Web client    → http://localhost:5173
 ```
 
+Or start all three as containers, on the same ports:
+
+```bash
+docker compose up --build
+```
+
 The API documents itself: browse and try the endpoints at
 [localhost:3000/docs](http://localhost:3000/docs), or fetch the OpenAPI document from
 `/openapi.json`.
@@ -44,6 +50,22 @@ To prove the whole path end to end against the live contract — this one spends
 ```bash
 npm run smoke
 ```
+
+## Connecting an AI assistant
+
+The MCP server listens at `http://localhost:3001/mcp` and refuses anonymous callers. A
+client opened in this directory discovers it through the checked-in `.mcp.json` and starts
+the OAuth flow on its own; scripts and anything without a browser use a scoped API key
+instead. Both paths, step by step, are in
+[SETUP.md](docs/SETUP.md#connect-an-ai-assistant).
+
+## What a write does
+
+Adding or completing a task sends a real transaction, spends testnet gas, and cannot be
+undone. Every interface treats that seriously in the same way: the write shows as pending
+while the network works, and success is reported only once a receipt confirms it — a
+transaction hash is not a result. If confirmation takes longer than the timeout, the hash is
+returned rather than swallowed, so the transaction can still be tracked.
 
 ## Configuration
 
@@ -76,7 +98,3 @@ packages/api    REST API over core
 packages/mcp    MCP server over core, with OAuth 2.1 and scoped API keys
 packages/web    React web client
 ```
-
-## License
-
-MIT

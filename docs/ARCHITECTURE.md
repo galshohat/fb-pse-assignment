@@ -187,6 +187,22 @@ Everything above the verifier deals in scopes and never in credentials, which is
 what makes replacing the whole left-hand side with a real identity provider a
 contained change. [MCP.md](MCP.md) covers the model in detail.
 
+## Packaging
+
+Each service ships as its own image, built from one Dockerfile with three
+targets rather than three near-identical Dockerfiles. In a workspace monorepo
+the install and compile steps are the same for every service, so sharing them
+keeps one layer cache warm and removes the drift that three copies eventually
+develop. What each target then keeps is only its own service: production
+dependencies resolved from the lockfile, the compiled output, no toolchain and
+no sources, running as a non-root user. The web client is static files behind
+nginx, since nothing about it needs a Node process at runtime.
+
+Compose publishes the same ports the npm scripts use, which is what keeps one
+set of URLs correct in both worlds. The MCP data directory is the only state in
+the system and is a named volume, so credentials and the audit trail outlive a
+rebuild.
+
 ## Testing
 
 `core` is unit-tested against mocked viem clients; `api` and `mcp` against a

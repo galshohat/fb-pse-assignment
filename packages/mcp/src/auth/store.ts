@@ -31,6 +31,8 @@ export interface RefreshTokenRecord {
   readonly subject: string;
   readonly role: Role;
   readonly expiresAt: string;
+  /** Carried through rotation so refreshed access tokens keep their audience. */
+  readonly resource?: string;
   /** Rotation marker: a refresh token may be redeemed exactly once. */
   usedAt?: string;
 }
@@ -41,6 +43,9 @@ interface PersistedState {
   oauthClients: OAuthClientRecord[];
   refreshTokens: RefreshTokenRecord[];
 }
+
+/** See addOAuthClient. Far above any legitimate population for one service. */
+const MAX_OAUTH_CLIENTS = 200;
 
 const EMPTY_STATE: PersistedState = {
   version: 1,
@@ -107,6 +112,15 @@ export class CredentialStore {
   addOAuthClient(record: OAuthClientRecord): void {
     this.reloadIfChanged();
     this.state.oauthClients.push(record);
+
+    // Registration is unauthenticated by design (RFC 7591 dynamic client
+    // registration), which makes it a way to grow this file without bound.
+    // Oldest-first eviction caps that: a legitimate client whose registration
+    // is evicted simply registers again on its next connection.
+    if (this.state.oauthClients.length > MAX_OAUTH_CLIENTS) {
+      this.state.oauthClients = this.state.oauthClients.slice(-MAX_OAUTH_CLIENTS);
+    }
+
     this.write();
   }
 
@@ -139,11 +153,43 @@ export class CredentialStore {
     this.write();
   }
 
-  /** Drops spent and expired refresh tokens so the file does not grow forever. */
+  /**
+   * Burns every live refresh token belonging to a subject.
+   *
+   * Used when a spent refresh token is presented again: rotation means a
+   * replay proves the token was stolen at some point, and the honest response
+   * is to end the whole session — successor tokens included — rather than
+   * only refusing the copy that happened to arrive second.
+   */
+  revokeRefreshTokensForSubject(subject: string): number {
+    this.reloadIfChanged();
+    let revoked = 0;
+
+    for (const token of this.state.refreshTokens) {
+      if (token.subject === subject && !token.usedAt) {
+        token.usedAt = new Date().toISOString();
+        revoked += 1;
+      }
+    }
+
+    if (revoked > 0) this.write();
+    return revoked;
+  }
+
+  /**
+   * Drops expired refresh tokens so the file does not grow forever.
+   *
+   * Spent-but-unexpired tokens are deliberately kept: they are how a replay is
+   * recognised. Pruning a token the moment it is rotated would make a replayed
+   * copy indistinguishable from a token that never existed, and the theft
+   * response — ending the whole session — could never trigger. The detection
+   * window is therefore the token's own lifetime, and so is the file growth.
+   */
   pruneRefreshTokens(now = new Date()): void {
+    this.reloadIfChanged();
     const before = this.state.refreshTokens.length;
     this.state.refreshTokens = this.state.refreshTokens.filter(
-      (token) => !token.usedAt && new Date(token.expiresAt) > now,
+      (token) => new Date(token.expiresAt) > now,
     );
     if (this.state.refreshTokens.length !== before) this.write();
   }

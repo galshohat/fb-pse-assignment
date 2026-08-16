@@ -29,7 +29,7 @@ function start(): void {
 
   const store = CredentialStore.forDataDir(config.dataDir);
   const accessTokens = new AccessTokenRegistry();
-  const verifier = new CredentialVerifier(store, accessTokens);
+  const verifier = new CredentialVerifier(store, accessTokens, config.publicUrl);
   const audit = new AuditLog(join(config.dataDir, 'audit.jsonl'), logger);
 
   const provider = new TodoOAuthProvider({

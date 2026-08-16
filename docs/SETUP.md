@@ -232,6 +232,11 @@ authenticate. Run `/mcp` in Claude Code, or use an API key.
 **MCP calls return `401` with a key that used to work** — it expired or was
 revoked. `npm run keys -w @todo/mcp -- list` shows the status of each.
 
+**Registering a client returns `429`** — dynamic client registration is limited
+to 20 an hour by the SDK, which is easy to exhaust while testing the flow
+repeatedly. Wait out the window, or use an API key in the meantime; restarting
+the server does not reset it, since the limiter counts per process uptime.
+
 ## Layout
 
 ```

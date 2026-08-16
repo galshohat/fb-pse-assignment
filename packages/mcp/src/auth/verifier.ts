@@ -12,6 +12,8 @@ export interface AccessTokenRecord {
   readonly subject: string;
   readonly role: Role;
   readonly expiresAt: number;
+  /** RFC 8707 resource the token was minted for, when the client named one. */
+  readonly resource?: string;
 }
 
 /**
@@ -25,7 +27,20 @@ export class AccessTokenRegistry {
   private readonly tokens = new Map<string, AccessTokenRecord>();
 
   issue(token: string, record: AccessTokenRecord): void {
+    // Expired tokens are dropped on lookup, but a token never presented again
+    // would otherwise sit here for the life of the process. Sweeping on issue
+    // bounds the map by the number of *live* tokens without needing a timer.
+    const now = Date.now();
+    for (const [existing, held] of this.tokens) {
+      if (held.expiresAt <= now) this.tokens.delete(existing);
+    }
+
     this.tokens.set(token, record);
+  }
+
+  /** Removes one token immediately, whatever its remaining lifetime. */
+  revoke(token: string): boolean {
+    return this.tokens.delete(token);
   }
 
   get(token: string): AccessTokenRecord | undefined {
@@ -58,9 +73,17 @@ export class AccessTokenRegistry {
  * else.
  */
 export class CredentialVerifier {
+  /**
+   * @param expectedResource The canonical identity of this resource server —
+   *   the public URL clients connect to. A token minted for a different
+   *   resource is refused here (RFC 8707), so a token issued by this
+   *   authorization server for some other service cannot be replayed against
+   *   this one.
+   */
   constructor(
     private readonly store: CredentialStore,
     private readonly accessTokens: AccessTokenRegistry,
+    private readonly expectedResource: string,
   ) {}
 
   verifyAccessToken = async (token: string): Promise<AuthInfo> => {
@@ -94,6 +117,14 @@ export class CredentialVerifier {
     const record = this.accessTokens.get(token);
     if (!record) throw invalidToken();
 
+    // Audience check. A token that names a resource must name *this* one; a
+    // token without a resource binding was not minted for anything else, so it
+    // passes. Comparison is on parsed URLs, so a trailing slash cannot split
+    // one identity into two.
+    if (record.resource !== undefined && !sameResource(record.resource, this.expectedResource)) {
+      throw invalidToken();
+    }
+
     return {
       token,
       clientId: record.clientId,
@@ -101,6 +132,14 @@ export class CredentialVerifier {
       expiresAt: Math.floor(record.expiresAt / 1000),
       extra: { role: record.role, subject: record.subject, credential: 'oauth' },
     };
+  }
+}
+
+function sameResource(a: string, b: string): boolean {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
   }
 }
 

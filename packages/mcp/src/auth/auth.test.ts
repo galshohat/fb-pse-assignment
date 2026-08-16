@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { describeMissingScope, hasScope, isRole, SCOPES, scopesForRole } from './scopes.js';
+import { TodoOAuthProvider } from './oauth/provider.js';
 import { CredentialStore, generateSecret, hashSecret } from './store.js';
 import { AccessTokenRegistry, API_KEY_PREFIX, CredentialVerifier } from './verifier.js';
 
@@ -135,13 +136,15 @@ describe('credential storage', () => {
     expect(CredentialStore.forDataDir(directory).apiKeys).toEqual([]);
   });
 
-  it('drops refresh tokens once they are spent or expired', () => {
+  it('drops expired refresh tokens but keeps spent ones, so replay stays visible', () => {
     const store = temporaryStore();
     const live = generateSecret('todo_rt');
+    const spent = generateSecret('todo_rt');
     const stale = generateSecret('todo_rt');
 
     for (const [secret, expiresAt] of [
       [live, new Date(Date.now() + 60_000)],
+      [spent, new Date(Date.now() + 60_000)],
       [stale, new Date(Date.now() - 60_000)],
     ] as const) {
       store.addRefreshToken({
@@ -153,10 +156,33 @@ describe('credential storage', () => {
       });
     }
 
+    store.consumeRefreshToken(hashSecret(spent));
     store.pruneRefreshTokens();
 
     expect(store.findRefreshToken(live)).toBeDefined();
     expect(store.findRefreshToken(stale)).toBeUndefined();
+
+    // A rotated token has to remain findable until it expires. Forgetting it
+    // would make a replayed copy look like a token that never existed, and
+    // theft would be indistinguishable from a typo.
+    expect(store.findRefreshToken(spent)?.usedAt).toBeTruthy();
+  });
+
+  it('caps registered OAuth clients, since registration is unauthenticated', () => {
+    const store = temporaryStore();
+
+    for (let index = 0; index < 205; index++) {
+      store.addOAuthClient({
+        clientId: `client-${index}`,
+        clientName: 'flood',
+        redirectUris: ['http://localhost/callback'],
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    expect(store.oauthClients).toHaveLength(200);
+    expect(store.findOAuthClient('client-0')).toBeUndefined();
+    expect(store.findOAuthClient('client-204')).toBeDefined();
   });
 });
 
@@ -168,7 +194,7 @@ describe('credential verification', () => {
   beforeEach(() => {
     store = temporaryStore();
     tokens = new AccessTokenRegistry();
-    verifier = new CredentialVerifier(store, tokens);
+    verifier = new CredentialVerifier(store, tokens, 'http://localhost:3001');
   });
 
   it('resolves a valid key to its role scopes and expiry', async () => {
@@ -241,6 +267,29 @@ describe('credential verification', () => {
     await expect(verifier.verifyAccessToken('todo_at_stale')).rejects.toThrow();
   });
 
+  it('refuses a token minted for a different resource, and honours slash variance', async () => {
+    tokens.issue('todo_at_elsewhere', {
+      clientId: 'client-1',
+      subject: 'user_1',
+      role: 'operator',
+      expiresAt: Date.now() + 60_000,
+      resource: 'https://another-service.example.com/mcp',
+    });
+    // The same identity save for a trailing slash: one resource, not two.
+    tokens.issue('todo_at_here', {
+      clientId: 'client-1',
+      subject: 'user_1',
+      role: 'operator',
+      expiresAt: Date.now() + 60_000,
+      resource: 'http://localhost:3001/',
+    });
+
+    await expect(verifier.verifyAccessToken('todo_at_elsewhere')).rejects.toThrow();
+    await expect(verifier.verifyAccessToken('todo_at_here')).resolves.toMatchObject({
+      clientId: 'client-1',
+    });
+  });
+
   it('revokes every access token belonging to a subject at once', async () => {
     tokens.issue('todo_at_1', {
       clientId: 'c',
@@ -259,5 +308,95 @@ describe('credential verification', () => {
 
     await expect(verifier.verifyAccessToken('todo_at_1')).rejects.toThrow();
     await expect(verifier.verifyAccessToken('todo_at_2')).rejects.toThrow();
+  });
+});
+
+describe('the OAuth provider token lifecycle', () => {
+  async function authorized() {
+    const store = temporaryStore();
+    const accessTokens = new AccessTokenRegistry();
+    const provider = new TodoOAuthProvider({
+      store,
+      accessTokens,
+      verifier: new CredentialVerifier(store, accessTokens, 'http://localhost:3001'),
+      accessTokenTtlSeconds: 900,
+      refreshTokenTtlSeconds: 86_400,
+    });
+
+    const code = provider.completeAuthorization({
+      clientId: 'client-1',
+      redirectUri: 'http://localhost/callback',
+      codeChallenge: 'challenge',
+      role: 'operator',
+      subject: 'user_a',
+    });
+    const tokens = await provider.exchangeAuthorizationCode({ client_id: 'client-1' }, code);
+
+    return { provider, accessTokens, tokens };
+  }
+
+  it('ends the whole session when a rotated refresh token is replayed', async () => {
+    const { provider, accessTokens, tokens } = await authorized();
+
+    // The legitimate exchange: the original refresh token is now spent and a
+    // successor exists, along with a fresh access token.
+    const rotated = await provider.exchangeRefreshToken(
+      { client_id: 'client-1' },
+      tokens.refresh_token as string,
+    );
+
+    // A replay of the spent token proves it was copied at some point. Refusing
+    // only the replay would leave the successor alive in unknown hands.
+    await expect(
+      provider.exchangeRefreshToken({ client_id: 'client-1' }, tokens.refresh_token as string),
+    ).rejects.toThrow(/already used/);
+
+    await expect(
+      provider.exchangeRefreshToken({ client_id: 'client-1' }, rotated.refresh_token as string),
+    ).rejects.toThrow();
+    expect(accessTokens.get(rotated.access_token)).toBeUndefined();
+  });
+
+  it('revokes a presented access token immediately, not just refresh tokens', async () => {
+    const { provider, accessTokens, tokens } = await authorized();
+
+    expect(accessTokens.get(tokens.access_token)).toBeDefined();
+
+    await provider.revokeToken({ client_id: 'client-1' }, { token: tokens.access_token });
+
+    expect(accessTokens.get(tokens.access_token)).toBeUndefined();
+  });
+
+  it('binds the requested resource to tokens across the refresh cycle', async () => {
+    const store = temporaryStore();
+    const accessTokens = new AccessTokenRegistry();
+    const verifier = new CredentialVerifier(store, accessTokens, 'http://localhost:3001');
+    const provider = new TodoOAuthProvider({
+      store,
+      accessTokens,
+      verifier,
+      accessTokenTtlSeconds: 900,
+      refreshTokenTtlSeconds: 86_400,
+    });
+
+    const code = provider.completeAuthorization({
+      clientId: 'client-1',
+      redirectUri: 'http://localhost/callback',
+      codeChallenge: 'challenge',
+      role: 'operator',
+      subject: 'user_b',
+      resource: 'https://another-service.example.com/',
+    });
+    const minted = await provider.exchangeAuthorizationCode({ client_id: 'client-1' }, code);
+
+    // Minted for another resource: this server must refuse it — and must keep
+    // refusing after a refresh, which is why the binding has to survive rotation.
+    await expect(verifier.verifyAccessToken(minted.access_token)).rejects.toThrow();
+
+    const refreshed = await provider.exchangeRefreshToken(
+      { client_id: 'client-1' },
+      minted.refresh_token as string,
+    );
+    await expect(verifier.verifyAccessToken(refreshed.access_token)).rejects.toThrow();
   });
 });

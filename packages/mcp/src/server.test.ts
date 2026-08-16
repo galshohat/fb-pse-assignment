@@ -73,7 +73,7 @@ beforeAll(async () => {
 
   const logger = pino({ level: 'silent' });
   const accessTokens = new AccessTokenRegistry();
-  const verifier = new CredentialVerifier(store, accessTokens);
+  const verifier = new CredentialVerifier(store, accessTokens, 'http://localhost:3001');
 
   // Mounted exactly as the service does, so discovery is covered too.
   const provider = new TodoOAuthProvider({
@@ -90,6 +90,7 @@ beforeAll(async () => {
     verifier,
     logger,
     publicUrl: 'http://localhost:3001',
+    rateLimit: false,
     oauthRoutes: createOAuthRoutes({
       provider,
       store,

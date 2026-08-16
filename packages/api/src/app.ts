@@ -67,7 +67,7 @@ export function createApp({
 
   // The machine-readable contract, and a browsable version of it. Swagger UI
   // ships its own assets, so the page works without network access.
-  const openApiDocument = buildOpenApiDocument();
+  const openApiDocument = buildOpenApiDocument(contractAddress);
   app.get('/openapi.json', (_req, res) => {
     res.json(openApiDocument);
   });

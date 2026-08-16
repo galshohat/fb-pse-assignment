@@ -149,7 +149,7 @@ export class TodoOAuthProvider {
       throw new InvalidGrantError('Redirect URI does not match the one used to authorize');
     }
 
-    return this.issueTokens(pending.clientId, pending.subject, pending.role);
+    return this.issueTokens(pending.clientId, pending.subject, pending.role, pending.resource);
   }
 
   /**
@@ -163,8 +163,20 @@ export class TodoOAuthProvider {
   ): Promise<OAuthTokens> {
     const record = this.options.store.findRefreshToken(refreshToken);
 
-    if (!record || record.usedAt) {
+    if (!record) {
       throw new InvalidGrantError('The refresh token is unknown, already used, or revoked');
+    }
+
+    // A spent token arriving again means it was replayed: rotation guarantees
+    // the legitimate holder already exchanged it, so someone else has a copy.
+    // Refusing only the replay would leave the thief's successor tokens alive
+    // if they exchanged first — so the whole session ends instead.
+    if (record.usedAt) {
+      this.options.store.revokeRefreshTokensForSubject(record.subject);
+      this.options.accessTokens.revokeAllForSubject(record.subject);
+      throw new InvalidGrantError(
+        'This refresh token was already used. All sessions for this authorization have been revoked; sign in again',
+      );
     }
 
     if (new Date(record.expiresAt) <= new Date()) {
@@ -176,7 +188,7 @@ export class TodoOAuthProvider {
     }
 
     this.options.store.consumeRefreshToken(record.hash);
-    return this.issueTokens(record.clientId, record.subject, record.role);
+    return this.issueTokens(record.clientId, record.subject, record.role, record.resource);
   }
 
   verifyAccessToken = async (token: string): Promise<AuthInfo> => {
@@ -184,6 +196,13 @@ export class TodoOAuthProvider {
   };
 
   async revokeToken(_client: { client_id: string }, request: { token: string }): Promise<void> {
+    // The client may present either kind of token (RFC 7009). An access token
+    // is known to this server, so "we accept revocations" has to mean it stops
+    // working now — not that the request succeeds while the token lives on.
+    if (this.options.accessTokens.revoke(request.token)) {
+      return;
+    }
+
     const record = this.options.store.findRefreshToken(request.token);
     if (record) {
       this.options.store.consumeRefreshToken(record.hash);
@@ -222,16 +241,25 @@ export class TodoOAuthProvider {
     res.type('html').send(consentPage(request, signConsent(request)));
   }
 
-  private issueTokens(clientId: string, subject: string, role: Role): OAuthTokens {
+  private issueTokens(
+    clientId: string,
+    subject: string,
+    role: Role,
+    resource?: string,
+  ): OAuthTokens {
     const accessToken = generateSecret(ACCESS_TOKEN_PREFIX);
     const refreshToken = generateSecret(REFRESH_TOKEN_PREFIX);
     const { accessTokenTtlSeconds, refreshTokenTtlSeconds } = this.options;
 
+    // The RFC 8707 resource the client asked for travels the whole chain —
+    // authorization, exchange, every refresh — so the verifier can refuse a
+    // token that was minted for some other resource server.
     this.options.accessTokens.issue(accessToken, {
       clientId,
       subject,
       role,
       expiresAt: Date.now() + accessTokenTtlSeconds * 1000,
+      ...(resource !== undefined ? { resource } : {}),
     });
 
     this.options.store.addRefreshToken({
@@ -240,6 +268,7 @@ export class TodoOAuthProvider {
       subject,
       role,
       expiresAt: new Date(Date.now() + refreshTokenTtlSeconds * 1000).toISOString(),
+      ...(resource !== undefined ? { resource } : {}),
     });
 
     this.options.store.pruneRefreshTokens();

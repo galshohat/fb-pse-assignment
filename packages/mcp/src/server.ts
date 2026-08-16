@@ -7,6 +7,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import type { TodoService } from '@todo/core';
 import type { Express, RequestHandler } from 'express';
+import rateLimit from 'express-rate-limit';
 import type { Logger } from 'pino';
 import type { AuditLog } from './audit.js';
 import type { CredentialVerifier } from './auth/verifier.js';
@@ -21,6 +22,8 @@ export interface McpAppOptions {
   readonly publicUrl: string;
   /** OAuth authorization-server routes, mounted at the application root. */
   readonly oauthRoutes?: RequestHandler[];
+  /** Disabled in tests, where a limiter would only add order-dependence. */
+  readonly rateLimit?: boolean;
 }
 
 /**
@@ -42,8 +45,28 @@ export function createMcpApp({
   logger,
   publicUrl,
   oauthRoutes = [],
+  rateLimit: enableRateLimit = true,
 }: McpAppOptions): Express {
   const app = createMcpExpressApp();
+
+  // `/oauth/consent` is the one unauthenticated endpoint here that the SDK does
+  // not cover: it ships limiters for its own routes (registration at 20/hour,
+  // token and revocation at 50/15min, authorize at 100/15min), but the consent
+  // submission is ours, and it is the request that actually mints an
+  // authorization code. Authenticated MCP traffic is not limited — it already
+  // costs a valid credential, and writes are gated by confirmation besides.
+  if (enableRateLimit) {
+    app.use(
+      '/oauth/consent',
+      rateLimit({
+        windowMs: 60_000,
+        limit: 30,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: 'too_many_requests' },
+      }),
+    );
+  }
 
   // Must be mounted at the root: discovery paths are well-known and absolute.
   for (const route of oauthRoutes) app.use(route);

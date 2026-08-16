@@ -269,6 +269,13 @@ Worth saying plainly, because the gap is deliberate rather than overlooked:
 - **Credentials are a single JSON file.** Fine for one process on one host;
   several instances behind a load balancer would need shared storage.
 
+Rate limits do apply to the unauthenticated surface. The SDK limits its own
+endpoints — registration to 20 an hour, token and revocation to 50 per fifteen
+minutes, authorization to 100 — and the consent submission, which is ours and
+is what actually mints a code, is limited to 30 a minute. Registered clients
+are capped at 200, oldest evicted, because registration needs no credential and
+appends to that file every time.
+
 ## Why keep API keys as well
 
 Because a browser flow is the wrong shape for some callers, and pretending

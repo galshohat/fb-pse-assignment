@@ -30,13 +30,15 @@ const writeResult: WriteResult = {
   },
 };
 
+const CONTRACT = `0x${'ab'.repeat(20)}` as const;
+
 const service = { getTasks: vi.fn(), addTask: vi.fn(), completeTask: vi.fn() };
 
 const app = createApp({
   service: service as unknown as TodoService,
   logger: pino({ level: 'silent' }),
   corsOrigin: 'http://localhost:5173',
-  contractAddress: `0x${'ab'.repeat(20)}`,
+  contractAddress: CONTRACT,
   rateLimit: false,
 });
 
@@ -60,7 +62,7 @@ afterAll(() => {
 beforeEach(() => vi.resetAllMocks());
 
 describe('the published document', () => {
-  const document = buildOpenApiDocument() as {
+  const document = buildOpenApiDocument(CONTRACT) as {
     openapi: string;
     paths: Record<string, Record<string, unknown>>;
     components: { schemas: Record<string, unknown> };

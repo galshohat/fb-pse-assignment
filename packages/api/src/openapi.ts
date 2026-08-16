@@ -25,8 +25,6 @@ function schemaFor(schema: z.ZodType, io: 'input' | 'output' = 'output'): object
   return z.toJSONSchema(schema, { target: 'openapi-3.0', io });
 }
 
-const CONTRACT_ADDRESS = '0xdF52AD4b53a094B97cA4a056d7f51b82E3b795c8';
-
 const failure = (description: string) => ({
   description,
   content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
@@ -49,7 +47,12 @@ const writeResponses = {
   503: failure('Every configured RPC endpoint is unreachable. Retrying later may succeed.'),
 } as const;
 
-export function buildOpenApiDocument(): object {
+/**
+ * @param contractAddress The address this instance is actually configured
+ *   against. Passed in rather than hardcoded so the published document cannot
+ *   name one contract while `/health` reports another.
+ */
+export function buildOpenApiDocument(contractAddress: string): object {
   return {
     openapi: '3.0.3',
     info: {
@@ -62,7 +65,7 @@ export function buildOpenApiDocument(): object {
         'fifteen seconds to confirm, and cannot be undone. A write endpoint only responds',
         'once a receipt has been seen, so a `201` or `200` means the change is final on-chain.',
         '',
-        `The list is stored by a public, permissionless contract at \`${CONTRACT_ADDRESS}\`.`,
+        `The list is stored by a public, permissionless contract at \`${contractAddress}\`.`,
         'Anyone can write to it directly, so tasks created by other people appear here too.',
       ].join('\n'),
       license: { name: 'MIT' },

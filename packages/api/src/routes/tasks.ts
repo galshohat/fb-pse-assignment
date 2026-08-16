@@ -1,20 +1,9 @@
-import { MAX_DESCRIPTION_LENGTH, type TodoService, type WriteResult } from '@todo/core';
+import { type TodoService, type WriteResult } from '@todo/core';
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { HttpError } from '../middleware/errors.js';
-
-const addTaskBody = z.object({
-  description: z
-    .string({ error: (issue) => (issue.input === undefined ? 'is required' : 'must be a string') })
-    .min(1, 'must not be empty')
-    .max(MAX_DESCRIPTION_LENGTH, `must not exceed ${MAX_DESCRIPTION_LENGTH} characters`),
-});
-
-const taskIdParam = z.coerce
-  .number({ error: 'must be a number' })
-  .int('must be a whole number')
-  .min(0, 'must not be negative');
+import { addTaskBody, taskIdParam } from '../schemas.js';
 
 /**
  * Task endpoints.

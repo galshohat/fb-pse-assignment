@@ -5,7 +5,9 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
+import swaggerUi from 'swagger-ui-express';
 import { createErrorHandler, notFoundHandler } from './middleware/errors.js';
+import { buildOpenApiDocument } from './openapi.js';
 import { createTaskRoutes } from './routes/tasks.js';
 
 /** Task descriptions are capped well below this; anything larger is not ours. */
@@ -48,6 +50,21 @@ export function createApp({
     // into traffic against the rate-limited public endpoints.
     res.json({ status: 'ok', service: 'api' });
   });
+
+  // The machine-readable contract, and a browsable version of it. Swagger UI
+  // ships its own assets, so the page works without network access.
+  const openApiDocument = buildOpenApiDocument();
+  app.get('/openapi.json', (_req, res) => {
+    res.json(openApiDocument);
+  });
+  app.use(
+    '/docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiDocument, {
+      customSiteTitle: 'Blockchain TODO API',
+      swaggerOptions: { tryItOutEnabled: true, displayRequestDuration: true },
+    }),
+  );
 
   app.use(createTaskRoutes(service, enableRateLimit ? createWriteLimiter() : passthrough));
 

@@ -225,12 +225,14 @@ measuring how quickly they are rejected. The slower hashing used for passwords
 buys nothing here: a password is short and guessable, whereas these keys are 32
 random bytes, which is not guessable at any speed. Each is shown once, at issue.
 
-## At a glance
+## Going further
 
-One fact drives all of it: this server spends money that cannot be recovered, on
-the instruction of something that is not a person. A single shared password
-would keep the world out, but it could not tell you who spent what, hand someone
-read-only access, or be revoked from one caller without disrupting the rest.
+The minimum this server had to do was distinguish readers from writers. It goes
+further than that, and each addition was chosen for the same reason: this server
+spends money that cannot be recovered, on the instruction of something that is
+not a person. A single shared password would keep the world out, but it could
+not tell you who spent what, hand someone read-only access, or be revoked from
+one caller without disrupting the rest.
 
 | Capability              | How it works                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -240,3 +242,11 @@ read-only access, or be revoked from one caller without disrupting the rest.
 | Credential lifetime     | 15-minute access tokens, refresh rotated on every use, per-key expiry, revocation effective on the next call                    |
 | Standards-based auth    | OAuth 2.1 code + PKCE, RFC 9728 resource metadata, RFC 9207 `iss`, RFC 8707 audience validation                                 |
 | Rate limiting           | SDK limits on its own OAuth endpoints, 30 a minute on the consent submission, 200 registered clients with oldest-first eviction |
+
+The one extension deliberately left on paper is multi-tenancy. The deployed
+contract holds a single global list, so isolating tenants is not something an
+access layer can conjure — it would take a contract instance per tenant, with
+each credential bound to its tenant's instance and scopes qualified accordingly
+(`acme/tasks:write`). The seam for it already exists: every credential resolves
+to a client identity in one place, so tenancy would be a change to configuration
+and deployment, not to the tools.

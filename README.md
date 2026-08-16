@@ -70,6 +70,25 @@ while the network works, and success is reported only once a receipt confirms it
 transaction hash is not a result. If confirmation takes longer than the timeout, the hash is
 returned rather than swallowed, so the transaction can still be tracked.
 
+## The project's own working rules, in `.claude/`
+
+A handful of rules govern this codebase and every one of them is cheap to state and easy to
+break: never spend gas on a call that cannot succeed, never report success before a receipt
+confirms it, never lose a transaction hash, and keep all chain logic in `core` so the two
+transports cannot drift. Written in a contributing guide, rules like these are read once. So
+they are also written where the tooling reads them — `CLAUDE.md` for the conventions, and
+`.claude/skills/` for the four bodies of knowledge that are genuinely easy to get wrong: the
+contract's ABI and revert strings and the fact that its list is global and permissionless;
+the simulate-send-confirm sequence and how concurrent writes are serialized; the roles,
+scopes and audit model; and the interface conventions for showing a slow, irreversible
+action.
+
+`.claude/agents/` then narrows that further, giving the backend, frontend, review, security
+and documentation roles only the tools and context each needs. The payoff is not automation
+for its own sake — it is that the contract's revert strings and the transaction rules are
+stated once, in a place that is consulted while the code is being written rather than after,
+so a change that would spend gas on a doomed call is caught at the point of writing it.
+
 ## Configuration
 
 All services read the single `.env` file at the repository root. Only

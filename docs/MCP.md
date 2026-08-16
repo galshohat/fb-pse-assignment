@@ -1,23 +1,15 @@
 # MCP server
 
-An MCP server that lets an AI assistant read and change the on-chain to-do list
-by talking, with authentication and access control that the chain itself does
-not provide.
+Lets an AI assistant read and change the on-chain to-do list conversationally,
+with the authentication and access control the chain itself does not provide.
 
 - **Endpoint** `http://localhost:3001/mcp`
-- **Transport** Streamable HTTP
-- **Auth** OAuth 2.1 (browser flow) or a scoped API key — both `Bearer`
+- **Transport** Streamable HTTP — every call carries a credential this server
+  verifies, which is what makes "may read but not write" enforceable rather than
+  a convention
+- **Auth** OAuth 2.1 (browser flow) or a scoped API key, both as `Bearer`
 
-Setup instructions are in [SETUP.md](SETUP.md). This document is the model: what
-the tools are, who may call them, and why it is built this way.
-
-## Why Streamable HTTP and not stdio
-
-stdio has no authentication story. A stdio server inherits whatever the process
-that spawned it can do, and any credential lives in the environment of that
-process. Over HTTP every single call carries a credential this server verifies
-itself, which is what makes "this caller may read but not write" a statement the
-server can enforce rather than a convention.
+To connect a client, see [SETUP.md](SETUP.md#connect-an-ai-assistant).
 
 ## The tools
 
@@ -27,110 +19,25 @@ server can enforce rather than a convention.
 | `addTask`      | `tasks:write`  | Sends a transaction. Spends gas, cannot be undone |
 | `completeTask` | `tasks:write`  | Sends a transaction. Spends gas, cannot be undone |
 
-Inputs are zod schemas, so the client gets a typed contract rather than prose.
-Descriptions state the cost and the irreversibility, because a model choosing
-between tools reads the description and nothing else. Both writes also accept
-`confirm: boolean` — see [confirmation](#confirmation-before-a-write).
+Inputs are zod schemas, so a client gets a typed contract rather than prose.
+Each description states the cost and the irreversibility, because a model
+choosing between tools reads the description and nothing else. Both writes also
+take `confirm: boolean` — see [confirmation](#confirmation-before-a-write).
 
-## A real session
+## Roles and scopes
 
-Everything below is real traffic from a running server.
+| Role       | Scopes                                     | For                              |
+| ---------- | ------------------------------------------ | -------------------------------- |
+| `viewer`   | `tasks:read`                               | Anything that only needs to look |
+| `operator` | `tasks:read`, `tasks:write`                | Assistants that act              |
+| `admin`    | `tasks:read`, `tasks:write`, `tasks:admin` | Managing credentials             |
 
-### No credential
+Every authorization decision is a scope check; roles are only named bundles, so
+adding one never means touching a tool.
 
-```text
-HTTP 401
-www-authenticate: Bearer error="invalid_token",
-  error_description="Missing Authorization header",
-  resource_metadata="http://localhost:3001/.well-known/oauth-protected-resource"
-
-{ "error": "invalid_token", "error_description": "Missing Authorization header" }
-```
-
-The challenge names the metadata document, which is what lets a client that was
-handed nothing but a URL discover how to authenticate and start the flow itself.
-
-### The metadata it points at (RFC 9728)
-
-```json
-{
-  "resource": "http://localhost:3001/",
-  "authorization_servers": ["http://localhost:3001/"],
-  "scopes_supported": ["tasks:read", "tasks:write", "tasks:admin"],
-  "resource_name": "Blockchain TODO list"
-}
-```
-
-### A read-only credential lists the tools
-
-```json
-[
-  {
-    "name": "getTasks",
-    "description": "Read every task on the shared to-do list… costs nothing and changes nothing."
-  },
-  {
-    "name": "addTask",
-    "description": "Add a task… spends gas, takes around fifteen seconds to confirm, and cannot be undone. Your current credential is read-only, so this call will be refused; an operator credential is required."
-  },
-  {
-    "name": "completeTask",
-    "description": "Mark a task as completed… Your current credential is read-only, so this call will be refused; an operator credential is required."
-  }
-]
-```
-
-### It reads
-
-```text
-27 tasks on-chain:
-[x] #0 my first test task
-[ ] #1 test task from service layer
-[x] #2 buy groceries
-…
-```
-
-### It is refused a write
-
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "insufficient_scope: this operation requires \"tasks:write\" but your credential grants tasks:read. Ask for an operator credential to make changes."
-    }
-  ],
-  "isError": true
-}
-```
-
-### An operator write, before confirming
-
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Confirmation required before this runs.\n\nAdd the task \"documented MCP session\".\n\nThis sends a blockchain transaction: it spends testnet funds, takes around fifteen seconds, and cannot be undone. To go ahead, call this tool again with the same arguments plus \"confirm\": true."
-    }
-  ],
-  "isError": true
-}
-```
-
-### And after
-
-```text
-Added task #27: "documented MCP session".
-Confirmed in block 11500562, 77742 gas.
-https://sepolia.etherscan.io/tx/0x241d229bf01957b23bf13d753067e7f2e0bac42b814e692f1893d60c031ae1ad
-```
-
-13.8 seconds, one transaction, one receipt.
-
-## Access control
-
-### Two ways in, one place they converge
+Both credential types converge on one function,
+`CredentialVerifier.verifyAccessToken`, which turns a credential into an
+`AuthInfo` of client id, scopes and expiry:
 
 ```mermaid
 flowchart LR
@@ -140,60 +47,40 @@ flowchart LR
     info --> guard["Every tool handler:<br/>scope check, then audit"]
 ```
 
-`CredentialVerifier.verifyAccessToken` is the only function in the server that
-turns a credential into an identity. Everything above it deals in scopes. That
-is what makes swapping in a real identity provider a contained change, and it is
-why both mechanisms behave identically once you are past the door.
-
-### Roles are bundles of scopes
-
-| Role       | Scopes                                     | For                              |
-| ---------- | ------------------------------------------ | -------------------------------- |
-| `viewer`   | `tasks:read`                               | Anything that only needs to look |
-| `operator` | `tasks:read`, `tasks:write`                | Assistants that act              |
-| `admin`    | `tasks:read`, `tasks:write`, `tasks:admin` | Managing credentials             |
-
-Every authorization decision in the server is a scope check. Roles exist only as
-named bundles, so adding a role never means touching a tool.
+Everything above that function deals in scopes and never in credentials, which
+is what makes swapping in an external identity provider a contained change.
 
 ### Every caller sees every tool
 
-The first version hid write tools from read-only callers, which is a common
-pattern. It was wrong here. A model that cannot see `addTask` reports "the tool
-does not exist" — the user reads that as a broken server, and the real cause,
-an under-privileged credential, is invisible to everyone.
-
-So all three tools are always registered, the handler enforces the scope, and
-the refusal names the scope that was missing. Read-only callers additionally get
-a sentence in the tool description saying the call will be refused, so a model
-can avoid spending a turn discovering it.
-
-The rule this follows: **a refusal must be distinguishable from an absence.**
+All three tools are registered for every caller, and the handler enforces the
+scope. Hiding write tools from a read-only caller would make a model report "the
+tool does not exist", which reads as a broken server and hides the real cause. A
+refusal must be distinguishable from an absence, so the refusal names the scope
+that was missing, and read-only callers get a sentence in the tool description
+saying the call will be refused.
 
 ### Confirmation before a write
 
-Both writes require explicit approval before anything reaches the chain:
+No write reaches the chain on a first request:
 
-1. If the client supports **elicitation**, the server asks and waits.
-2. If it does not, the first call returns the confirmation text above, and the
-   client must repeat the call with `confirm: true`.
+1. Where the client supports **elicitation**, the server asks and waits.
+2. Otherwise the call returns a description of what would happen, and the client
+   must repeat it with `confirm: true`.
 
 Anything that is not an explicit accept — a decline, a cancel, a timeout, a
-missing flag — means nothing is sent. The audit entry records the attempt with
-`reason: "awaiting confirmation"`, so a refusal to confirm is visible too.
+missing flag — sends nothing, and the attempt is audited with
+`reason: "awaiting confirmation"`.
 
-Be precise about what this guarantees. `confirm` is a normal tool argument, so a
-model that has been told what it does can set it on the first call and never
-reach the elicitation path. The server's guarantee is that no write happens
-without a deliberate confirming step, and that every unconfirmed attempt is
-recorded — not that a human was necessarily the one who took it. Keeping a
-person in the loop is the client's tool-approval prompt, and where that is not
-good enough, the answer is a viewer credential for the assistant and write
-access somewhere a person holds.
+What this guarantees is that no write happens without a deliberate second step,
+and that every unconfirmed attempt is recorded. It does not guarantee a human
+took that step: `confirm` is an ordinary tool argument, so a model can set it on
+the first call. Keeping a person in the loop is the client's own approval
+prompt. Where that is not enough, give the assistant a viewer credential and
+keep write access somewhere a person holds.
 
 ### Every call is audited
 
-One JSONL line per call, written whatever the outcome, to `data/audit.jsonl`:
+One JSONL line per call to `data/audit.jsonl`, whatever the outcome:
 
 ```json
 {"timestamp":"2026-08-16T10:26:48.898Z","clientId":"9b6e1411","credential":"api-key",
@@ -207,14 +94,49 @@ One JSONL line per call, written whatever the outcome, to `data/audit.jsonl`:
  "transactionHash":"0x241d229bf0…"}
 ```
 
-Identity is the credential **id**, never the credential. Nothing that could be
-replayed is ever written to the log.
+Identity is the credential **id**, never the credential — nothing replayable is
+written to the log.
+
+## A session, as it happens
+
+Real traffic from a running server. **No credential** gets a `401` naming the
+metadata document, which is what lets a client handed only a URL discover how to
+authenticate:
+
+```text
+HTTP 401
+www-authenticate: Bearer error="invalid_token",
+  error_description="Missing Authorization header",
+  resource_metadata="http://localhost:3001/.well-known/oauth-protected-resource"
+```
+
+**A read-only credential is refused a write**, and told exactly why:
+
+```text
+insufficient_scope: this operation requires "tasks:write" but your credential
+grants tasks:read. Ask for an operator credential to make changes.
+```
+
+**An operator's first attempt is held**, then goes through on confirmation —
+13.8 seconds end to end:
+
+```text
+Confirmation required before this runs.
+Add the task "documented MCP session".
+This sends a blockchain transaction: it spends testnet funds, takes around
+fifteen seconds, and cannot be undone. To go ahead, call this tool again with
+the same arguments plus "confirm": true.
+
+→ Added task #27: "documented MCP session".
+  Confirmed in block 11500562, 77742 gas.
+  https://sepolia.etherscan.io/tx/0x241d229bf01957b23bf1…
+```
 
 ## OAuth 2.1
 
-The server is both the resource server and, for this project, a small
-authorization server. It implements authorization code with PKCE, dynamic client
-registration, and refresh-token rotation.
+The server is the resource server and also a small authorization server,
+implementing authorization code with PKCE, dynamic client registration and
+refresh-token rotation.
 
 ```mermaid
 sequenceDiagram
@@ -227,7 +149,7 @@ sequenceDiagram
     RS-->>C: 401 + resource_metadata URL
     C->>AS: GET metadata, POST /register
     C->>U: open /authorize?…&code_challenge=S256(v)
-    U->>AS: consent — approve as viewer or operator
+    U->>AS: consent — approve, and choose a role
     AS-->>C: redirect with code + iss
     C->>AS: POST /token — code + code_verifier
     AS-->>C: access token (15 min) + refresh token
@@ -246,52 +168,39 @@ sequenceDiagram
 | `/token`                                  | Code exchange and refresh              |
 | `/revoke`                                 | Token revocation                       |
 
-Every one of those but `/oauth/consent` comes from the SDK. That one is ours,
-because only this service knows what a role means here — and it is the request
-that actually issues an authorization code, which is why it is the endpoint we
-rate-limit ourselves.
+All of those come from the MCP SDK except `/oauth/consent`, which is ours
+because only this service knows what a role means — and being the request that
+mints a code, it is the one we rate-limit ourselves.
 
-What the implementation is careful about:
+What the flow enforces:
 
-- **PKCE is required.** `code_challenge_methods_supported` is `["S256"]` only.
-  The code alone is useless to an interceptor without the verifier.
-- **Refresh tokens rotate.** Each use issues a new one and burns the old. A
-  replayed refresh token fails, which is how you notice it was stolen.
-- **Access tokens are short.** 15 minutes by default. A leaked one stops working
-  on its own.
-- **`iss` is returned** on the authorization response (RFC 9207), so a client
-  cannot be tricked about which server answered.
-- **The redirect URI is re-checked at consent**, against what the client
-  registered — not against what the consent form submitted. The form is a
-  hostile input like any other, and it is also signed, so it cannot be forged.
-- **Audience is validated.** A token minted for another resource is not accepted
-  here.
+- **PKCE is mandatory** — `code_challenge_methods_supported` is `["S256"]` only,
+  so an intercepted code is useless without the verifier.
+- **Refresh tokens rotate.** Each use burns the old one; presenting a spent
+  token ends the whole session, on the basis that a replay means it was copied.
+- **Access tokens last 15 minutes**, so a leaked one stops working on its own.
+- **`iss` is returned** (RFC 9207), identical to the advertised issuer, so a
+  client cannot be misled about which server answered.
+- **The redirect URI is re-checked at consent** against what the client
+  registered, not against what the form submitted — and the form is signed, so
+  it cannot be forged.
+- **The audience is validated** (RFC 8707): a token minted for another resource
+  is refused here.
 
-### What this authorization server does not do
+Two operational notes. There is no login: whoever can reach the consent page can
+approve a client, so the boundary is network reach, and an external identity
+provider plugs in at the verifier. And credentials live in one JSON file, which
+suits a single host; several instances would need shared storage.
 
-- **It authenticates nobody.** There is no login. Whoever reaches the consent
-  page can approve a client and pick a role for it, so the security boundary is
-  "can you reach this page", not "who are you". That is defensible for a service
-  on localhost and wrong for anything else — and it is the specific job a real
-  identity provider does. The verifier seam is where one plugs in.
-- **Consent state and access tokens live in memory.** A restart invalidates
-  in-flight authorization requests and forces clients to refresh, which is the
-  right outcome for a sixty-second flow and a fifteen-minute token. Refresh
-  tokens, which must survive a restart, are hashed on disk.
-- **Credentials are a single JSON file.** Fine for one process on one host;
-  several instances behind a load balancer would need shared storage.
+Rate limits cover the unauthenticated surface — the SDK caps registration at 20
+an hour, token and revocation at 50 per fifteen minutes and authorization at
+100; the consent submission is capped at 30 a minute; and registered clients are
+capped at 200, oldest evicted, since registration needs no credential.
 
-Rate limits do apply to the unauthenticated surface. The SDK limits its own
-endpoints — registration to 20 an hour, token and revocation to 50 per fifteen
-minutes, authorization to 100 — and the consent submission, which is ours and
-is what actually mints a code, is limited to 30 a minute. Registered clients
-are capped at 200, oldest evicted, because registration needs no credential and
-appends to that file every time.
+## Why both OAuth and API keys
 
-## Why keep API keys as well
-
-Because a browser flow is the wrong shape for some callers, and pretending
-otherwise pushes people into worse workarounds:
+A browser flow is the wrong shape for a script or a CI job, and pretending
+otherwise pushes people into sharing interactive credentials:
 
 |                     | OAuth 2.1                                | API keys                                  |
 | ------------------- | ---------------------------------------- | ----------------------------------------- |
@@ -301,37 +210,25 @@ otherwise pushes people into worse workarounds:
 | Setup               | Automatic from a 401                     | One CLI command                           |
 | Revocation          | Revoke the token or the client           | `keys revoke <id>`, effective immediately |
 
-Both are hashed at rest, both carry scopes and an expiry, both resolve to the
-same `AuthInfo`, and both are audited identically. The choice is about the
-caller, not about how much security you want.
+Both are hashed at rest, carry scopes and an expiry, resolve to the same
+`AuthInfo`, and are audited identically — the choice is about the caller, not
+about how much security you want. Keys are stored as SHA-256 hashes and compared
+in constant time; a key is high-entropy and randomly generated, so a slow KDF
+would buy nothing against a guessing attack that cannot happen. A key is shown
+once, at issue.
 
-The keys are stored as SHA-256 hashes — a key is high-entropy and randomly
-generated, so a slow KDF buys nothing against a password guessing attack that
-cannot happen. Comparison is constant-time. A key is shown once, at issue.
+## At a glance
 
-## Multi-tenancy
-
-Not built: this contract has one global list, so there is nothing to partition.
-The pieces that would be needed are already in the right places — a client identity per tenant, scopes carried through the same
-verifier, and audit entries already keyed by client. What would change is that
-`TodoService` would take a contract address per tenant instead of one from
-configuration, and the verifier would resolve a tenant alongside the scopes.
-
-## Security and operations at a glance
-
-All of it follows from one fact: this server spends money that cannot be
-recovered, on the instruction of something that is not a person. A single shared
-password would have been enough to stop it being open to the world — but it
-would not tell you who spent what, would not let you hand someone read-only
-access, and could not be taken away from one caller without disrupting every
-other. Each row below exists to answer one of those.
+One fact drives all of it: this server spends money that cannot be recovered, on
+the instruction of something that is not a person. A single shared password
+would keep the world out, but it could not tell you who spent what, hand someone
+read-only access, or be revoked from one caller without disrupting the rest.
 
 | Capability              | How it works                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Permission tiers        | Three roles as scope bundles — see [Roles are bundles of scopes](#roles-are-bundles-of-scopes)                                  |
-| Approval before a write | Elicitation where the client supports it, a `confirm: true` argument otherwise — see [above](#confirmation-before-a-write)      |
-| Audit trail             | One JSONL line per call in `data/audit.jsonl` — successes, refusals and errors alike                                            |
+| Permission tiers        | Three roles as scope bundles — viewer, operator, admin                                                                          |
+| Approval before a write | Elicitation where supported, a `confirm: true` argument otherwise                                                               |
+| Audit trail             | One JSONL line per call — successes, refusals and errors alike                                                                  |
 | Credential lifetime     | 15-minute access tokens, refresh rotated on every use, per-key expiry, revocation effective on the next call                    |
-| Standards-based auth    | OAuth 2.1 authorization code with PKCE, RFC 9728 resource metadata, RFC 9207 `iss`, RFC 8707 audience validation                |
+| Standards-based auth    | OAuth 2.1 code + PKCE, RFC 9728 resource metadata, RFC 9207 `iss`, RFC 8707 audience validation                                 |
 | Rate limiting           | SDK limits on its own OAuth endpoints, 30 a minute on the consent submission, 200 registered clients with oldest-first eviction |
-| Multi-tenancy           | Not implemented — this contract has a single global list; see [Multi-tenancy](#multi-tenancy)                                   |

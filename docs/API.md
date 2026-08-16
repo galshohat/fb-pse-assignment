@@ -152,9 +152,6 @@ Real examples:
 $ curl -s -X POST localhost:3000/tasks -H 'Content-Type: application/json' -d '{"description":""}'
 {"error":{"code":"VALIDATION_FAILED","message":"description must not be empty"}}          # 400
 
-$ curl -s -X POST localhost:3000/tasks -H 'Content-Type: application/json' -d '{}'
-{"error":{"code":"VALIDATION_FAILED","message":"description is required"}}                # 400
-
 $ curl -s -X POST localhost:3000/tasks/9999/complete
 {"error":{"code":"TASK_NOT_FOUND","message":"Task 9999 does not exist",
           "details":{"taskId":9999}}}                                                     # 404
@@ -162,12 +159,6 @@ $ curl -s -X POST localhost:3000/tasks/9999/complete
 $ curl -s -X POST localhost:3000/tasks/30/complete    # already completed
 {"error":{"code":"TASK_ALREADY_COMPLETED","message":"Task 30 is already completed",
           "details":{"taskId":30}}}                                                       # 409
-
-$ curl -s -X POST localhost:3000/tasks/abc/complete
-{"error":{"code":"VALIDATION_FAILED","message":"id must be a number"}}                    # 400
-
-$ curl -s localhost:3000/nope
-{"error":{"code":"ROUTE_NOT_FOUND","message":"GET /nope is not a route"}}                 # 404
 ```
 
 ### 202 is not a failure

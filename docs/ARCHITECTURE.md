@@ -1,6 +1,6 @@
 # Architecture
 
-How the system is put together, and why it is put together that way.
+How the system is put together, and why.
 
 ## The shape
 
@@ -16,36 +16,22 @@ flowchart LR
     rpc --> contract[("TodoList contract<br/>0xdF52…95c8")]
 ```
 
-Three services run independently — each with its own port and start script, and
-a `/health` endpoint on the two that are servers — and share one library that
-owns every piece of blockchain knowledge in the system.
+Three services run independently, each with its own port and start script, and
+share one library holding every piece of blockchain knowledge in the system.
 
-## Why `core` is a library and not a fourth service
+`core` is a library rather than a fourth service because what needed sharing was
+the logic, not a process: imported at compile time, it makes it impossible for
+the REST and MCP layers to disagree about how a transaction is sent, what counts
+as success, or what an error means. The rule this imposes is that `api` and
+`mcp` only translate their own protocol into `core` calls and `core` errors into
+their own vocabulary — contract knowledge, transaction handling and retry logic
+all belong in `core`.
 
-The obvious "more microservices" version of this puts a blockchain gateway
-behind its own HTTP port. That would add a network hop, a serialization
-boundary, and a new failure mode to every read, and would buy nothing: the two
-callers are in the same trust domain, deploy together, and have no independent
-scaling story.
-
-What actually needed to be shared was the _logic_, not a _process_. As a
-library, `core` is imported at compile time, which means the REST and MCP layers
-cannot disagree about how a transaction is sent, what counts as success, or what
-an error means — the compiler enforces it.
-
-The tradeoff is discussed under [concurrency](#concurrency-and-nonces): a
-per-process queue cannot coordinate across processes.
-
-**Rule this imposes.** `api` and `mcp` translate their own protocol into `core`
-calls and `core` errors into their own vocabulary. Neither contains contract
-knowledge, transaction handling, or retry logic. If a change would add any of
-those to a transport, it belongs in `core`.
-
-## What the contract is
+## The contract
 
 `TodoList`, deployed to Sepolia at
 [`0xdF52AD4b53a094B97cA4a056d7f51b82E3b795c8`](https://sepolia.etherscan.io/address/0xdF52AD4b53a094B97cA4a056d7f51b82E3b795c8),
-verified, compiled with solc 0.8.34. Three functions:
+verified, solc 0.8.34:
 
 | Function                | Kind  | Reverts with                                       |
 | ----------------------- | ----- | -------------------------------------------------- |
@@ -53,24 +39,20 @@ verified, compiled with solc 0.8.34. Three functions:
 | `addTask(string)`       | write | `Description cannot be empty`                      |
 | `completeTask(uint256)` | write | `Task does not exist`, `Task is already completed` |
 
-Two properties of it drive the design of everything above:
+Two of its properties drive everything above it.
 
-**The list is global and permissionless.** There is no owner and no
-`msg.sender` check. Every caller shares one list and anyone may complete
-anyone's task. The chain enforces nothing about who may do what, so our
-authorization layer is not a convenience — it is the only access control that
-exists. It is also why the web client says the list is shared, and why
-`TASK_ALREADY_COMPLETED` is a real, ordinary outcome rather than a rare race.
+**The list is global and permissionless** — no owner, no `msg.sender` check.
+Every caller shares one list and anyone may complete anyone's task, so the
+authorization layer here is not a convenience; it is the only access control
+that exists. It is also why `TASK_ALREADY_COMPLETED` is an ordinary outcome
+rather than a rare race.
 
-**Ids are sequential from zero**, assigned by the contract. A client cannot
-choose one, and the id of a new task is only knowable after the fact — which is
-why the id is decoded from the `TaskAdded` event in the receipt rather than
-guessed from the list length. Guessing would be wrong the moment two writers
-overlap.
+**Ids are sequential from zero**, assigned by the contract, so the id of a new
+task is knowable only after the fact. It is decoded from the `TaskAdded` event
+in the receipt rather than guessed from the list length, which would be wrong
+the moment two writers overlap.
 
 ## The lifecycle of a write
-
-Every write, from either service, goes through exactly this:
 
 ```mermaid
 sequenceDiagram
@@ -96,64 +78,54 @@ sequenceDiagram
     S-->>C: task + hash + block + gas used
 ```
 
-Four rules are enforced here:
+Four rules hold on every write, from either service:
 
 1. **Validate, then simulate, then send.** A reverted transaction still costs
-   gas. Anything knowably doomed is refused before it can spend anything, and
-   `simulateContract` catches the rest — including races the client could not
+   gas, so anything knowably doomed is refused before it can spend anything and
+   `simulateContract` catches the rest, including races the caller could not
    have known about.
 2. **A hash is not a result.** The call returns only after a receipt with
-   `status: 'success'`. Reporting a submitted transaction as done would be a lie
-   often enough to matter.
-3. **Never lose a hash.** If the receipt does not arrive inside the timeout, the
-   transaction is still on the network and may yet be mined. That is not an
-   error: `core` throws `TransactionTimeoutError` carrying the hash, and the
-   transports surface it (HTTP `202`, a sticky notice in the UI) so the caller
-   can still track it.
-4. **The id comes from the event.** `parseEventLogs` reads `TaskAdded` out of
-   the receipt, so the id reported is the one the chain assigned.
+   `status: 'success'`.
+3. **Never lose a hash.** If the receipt does not arrive inside the timeout the
+   transaction may still be mined, so `TransactionTimeoutError` carries the hash
+   and the transports surface it — HTTP `202`, a sticky notice in the UI.
+4. **The id comes from the event**, so it is the id the chain assigned.
 
 ## Concurrency and nonces
 
-Every transaction from one wallet carries a sequential nonce. Two transactions
-built at the same time get the same nonce, and the network keeps one and drops
-the other. With a single shared signing wallet and two services that both write,
-this is not a corner case — it is the default outcome of any concurrent use.
-
-Two defences, deliberately overlapping:
+Every transaction from one wallet carries a sequential nonce, and two built at
+the same time collide: the network keeps one and drops the other. With one
+shared signing wallet and two services that write, that is the default outcome
+of concurrent use, not a corner case. Two overlapping defences:
 
 - **A mutex around the whole simulate → send → wait block** (`async-mutex`, in
-  `TodoService`). Simulation of the second write then happens against the state
-  the first one produced, which is also what makes "already completed" correct
-  rather than racy.
-- **viem's `nonceManager` on the account**, which derives nonces from the chain
-  and hands out sequential ones for concurrent sends.
+  `TodoService`), so the second write simulates against the state the first
+  produced — which is also what makes "already completed" correct rather than
+  racy.
+- **viem's `nonceManager`**, deriving nonces from the chain for concurrent
+  sends.
 
 Verified: three concurrent adds through the REST API took nonces 31, 32 and 33
 and produced tasks 17, 18 and 19 — no collision, no dropped transaction.
 
-**The limit.** The mutex is per process. `api` and `mcp` are separate processes
-sharing one wallet, so it does not serialize _between_ them; only `nonceManager`
-does, and it is best-effort. In production the answer is one component that owns
-the key — a broadcaster service, or a signing service of the Fireblocks kind —
-so that "who may send the next transaction" has exactly one answer.
+The mutex is per process, so it serializes writes within a service but not
+between `api` and `mcp`, which share the wallet; between them only
+`nonceManager` applies.
 
 ## Talking to the network
 
 Reads and writes share a viem `fallback` transport over four public Sepolia
 endpoints, tried in order, each with a 10-second timeout and two retries before
-moving on. Public endpoints rate-limit and go down; treating any one of them as
-reliable would make the service flaky for reasons that have nothing to do with
-this code.
+moving on. Public endpoints rate-limit and go down, and treating any one as
+reliable would make the service flaky for reasons unrelated to this code.
 
 ## Errors
 
-`core` throws typed errors (`core/src/errors.ts`). Nothing else in the system
-sees a viem error: `mapChainError` walks the cause chain for
+`core` throws typed errors from `core/src/errors.ts`, and nothing else in the
+system ever sees a viem error: `mapChainError` walks the cause chain for
 `ContractFunctionRevertedError`, matches the contract's revert strings, and
-produces a typed error with a message written for a person.
-
-Each transport then maps that one taxonomy into its own vocabulary:
+produces a typed error worded for a person. Each transport maps that one
+taxonomy into its own vocabulary:
 
 | `core` error                | REST              | MCP                                     |
 | --------------------------- | ----------------- | --------------------------------------- |
@@ -165,72 +137,50 @@ Each transport then maps that one taxonomy into its own vocabulary:
 | `ChainUnavailableError`     | 503 + Retry-After | `isError` result                        |
 | `UnexpectedChainError`      | 502               | `isError` result                        |
 
-A revert is `422`, not `500`: the request was well-formed and the service did
-its job — the contract declined. A timeout is `202`, not an error at all.
+A revert is `422` rather than `500` — the request was well-formed and the
+service did its job; the contract declined. A timeout is `202`, not an error.
 
 ## Authentication
 
-The MCP server takes two kinds of credential — an OAuth 2.1 access token or a
-scoped API key — and both become an identity in one function,
-`CredentialVerifier.verifyAccessToken`. Everything above it deals in scopes and
-never in credentials, which is what makes replacing the whole left-hand side
-with a real identity provider a contained change.
-[MCP.md](MCP.md#two-ways-in-one-place-they-converge) has the diagram and the
-model in detail.
+The MCP server accepts an OAuth 2.1 access token or a scoped API key, and both
+become an identity in one function, `CredentialVerifier.verifyAccessToken`.
+Everything above it deals in scopes and never in credentials, which is what
+makes an external identity provider a contained change.
+[MCP.md](MCP.md#roles-and-scopes) has the model in full.
 
-This applies to the MCP server. **The REST API has no authentication**, which is
-a deliberate scope decision rather than an omission: it is the web client's
-backend, and putting a second, different credential system in front of it would
-be the wrong answer to a question the surrounding deployment normally answers
-already. What guards it instead is a single permitted browser origin and a cap
-of ten writes a minute, so a misconfigured page cannot drain the wallet. It is
-not a service to expose to the internet unchanged — the honest fix is a gateway
-in front of it, not a bespoke scheme inside it.
+**The REST API has no authentication.** It is the web client's backend and is
+expected to sit behind whatever sign-in the surrounding deployment already has;
+what guards it here is a single permitted browser origin and a cap of ten writes
+a minute, so a misconfigured page cannot drain the wallet.
 
 ## Packaging
 
-Each service ships as its own image, built from one Dockerfile with three
-targets rather than three near-identical Dockerfiles. In a workspace monorepo
-the install and compile steps are the same for every service, so sharing them
-keeps one layer cache warm and removes the drift that three copies eventually
-develop. What each target then keeps is only its own service: production
-dependencies resolved from the lockfile, the compiled output, no toolchain and
-no sources, running as a non-root user. The web client is static files behind
-nginx, since nothing about it needs a Node process at runtime.
-
-Compose publishes the same ports the npm scripts use, which is what keeps one
-set of URLs correct in both worlds. The MCP data directory is the only state in
-the system and is a named volume, so credentials and the audit trail outlive a
+Each service ships as its own image from one Dockerfile with three targets. In a
+workspace monorepo the install and compile steps are identical for every
+service, so sharing them keeps one layer cache warm and avoids the drift three
+copies develop. Each target keeps only its own service — production dependencies
+from the lockfile, compiled output, no toolchain, no sources, non-root user —
+and the web client is static files behind nginx. Compose publishes the same
+ports the npm scripts use, so one set of URLs is correct either way, and the MCP
+data directory is a named volume so credentials and the audit trail outlive a
 rebuild.
 
 ## Testing
 
-`core` is unit-tested against mocked viem clients; `api` and `mcp` against a
+`core` is unit-tested against mocked viem clients, `api` and `mcp` against a
 mocked core service. Nothing in the automated suite spends gas or touches the
-network — the suite must be runnable offline, on a machine with no funded
-wallet, without cost. Live verification is deliberate and separate:
-`npm run smoke` spends real testnet gas and says so.
+network — it must run offline, on a machine with no funded wallet, for free.
+Live verification is separate and deliberate: `npm run smoke` spends real
+testnet gas and says so.
 
-## Known gaps and what would close them
+## Operating notes
 
-- **A transaction broadcaster.** One component owning the key and a durable
-  queue, with the services enqueueing intents rather than sending. That fixes
-  the cross-process nonce gap properly, survives a restart mid-flight, and gives
-  retries somewhere sensible to live.
-- **A durable audit store.** The audit log is JSONL on disk: fine for one
-  machine, useless across replicas. Anything real wants an append-only store
-  that outlives the container.
-- **A real identity provider.** The OAuth server here is genuine and complete
-  for a single service. A second service would want Auth0, Keycloak or similar
-  behind the same verifier seam.
-- **Idempotency keys on writes.** A client that retries after a network blip
-  currently risks a second transaction. An idempotency key on `POST /tasks`
-  would let the service recognise the retry and return the first result.
-- **Reads from an indexed view.** Every list read is a contract call. At any
-  real volume that becomes an indexer and a cache, with the chain as the source
-  of truth behind it.
-- **A configurable chain.** The contract address is configuration, but the
-  network is not: `clients.ts` imports Sepolia directly, and the chain id and
-  explorer URLs derive from it. Supporting a second network means threading a
-  chain through that module — small, but code rather than an environment
-  variable, and worth knowing before promising a mainnet deployment.
+- **The network is fixed in code.** The contract address is configuration, but
+  `clients.ts` imports Sepolia directly and the chain id and explorer URLs
+  derive from it, so another network is a code change.
+- **The audit log is JSONL on disk**, which suits a single host.
+- **Writes are not idempotent.** A retry after a network blip can produce a
+  second transaction; the `202` path exists so a slow confirmation does not
+  provoke one.
+- **Every list read is a contract call**, which is fine at this volume and is
+  where a cache would go if it stopped being so.

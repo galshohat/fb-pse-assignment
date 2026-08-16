@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Blockchain-backed TODO list: REST API, authenticated MCP server, and web client for a smart contract on Ethereum Sepolia",
   "engines": {
-    "node": ">=20.10"
+    "node": ">=22.9"
   },
   "workspaces": [
     "packages/*"

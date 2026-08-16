@@ -21,7 +21,7 @@ export default function App() {
         taskCount={tasks.data?.length}
       />
 
-      <main className="mx-auto max-w-3xl px-5 py-7">
+      <main className="mx-auto max-w-4xl px-6 py-8">
         <AddTaskForm onSubmit={add.mutate} isPending={add.isPending} startedAt={add.submittedAt} />
 
         <TaskList
@@ -43,8 +43,8 @@ export default function App() {
         <ActivityLog />
       </main>
 
-      <footer className="mx-auto max-w-3xl px-5 pb-10">
-        <p className="text-xs text-subtle">
+      <footer className="mx-auto max-w-4xl px-6 pt-2 pb-12">
+        <p className="text-xs leading-relaxed text-subtle">
           Reads come from the contract on every poll. Writes are reported only once they are mined.
         </p>
       </footer>

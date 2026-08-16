@@ -39,12 +39,12 @@ export function ActivityLog() {
   }
 
   return (
-    <section className="mt-5 overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
-      <h2 className="eyebrow border-b border-line px-5 py-2.5 text-subtle">
+    <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface shadow-(--shadow-rest)">
+      <h2 className="eyebrow border-b border-line px-5 py-3 text-subtle">
         This session · {entries.length} transaction{entries.length === 1 ? '' : 's'}
       </h2>
 
-      <ul className="divide-y divide-line">
+      <ul className="divide-y divide-line rule">
         {entries.map((entry) => (
           <ActivityRow key={entry.id} entry={entry} />
         ))}
@@ -63,16 +63,16 @@ function ActivityRow({ entry }: { entry: Activity }) {
   const { Icon, tone, label } = STATUS[entry.status];
 
   return (
-    <li className="flex items-start gap-3 px-5 py-2.5">
+    <li className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-sunk/50">
       <span className={`mt-0.5 ${tone}`} title={label}>
         <Icon className="size-3.5" />
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="text-sm">
-          {headline(entry)}
+        <p className="text-sm leading-snug">
+          <span className="font-medium">{headline(entry)}</span>
           {entry.taskId !== undefined && (
-            <span className="tabular font-mono"> #{entry.taskId}</span>
+            <span className="tabular font-mono text-muted"> #{entry.taskId}</span>
           )}
           {entry.description && <span className="text-muted"> — {entry.description}</span>}
         </p>

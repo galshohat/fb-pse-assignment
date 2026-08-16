@@ -1,4 +1,4 @@
-import '@fontsource-variable/ibm-plex-sans';
+import '@fontsource-variable/instrument-sans';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './index.css';

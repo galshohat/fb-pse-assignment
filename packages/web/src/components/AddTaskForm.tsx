@@ -26,6 +26,7 @@ export function AddTaskForm({ onSubmit, isPending, startedAt }: AddTaskFormProps
 
   const trimmed = description.trim();
   const tooLong = trimmed.length > MAX_DESCRIPTION_LENGTH;
+  const nearLimit = trimmed.length > MAX_DESCRIPTION_LENGTH * 0.8;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -49,13 +50,13 @@ export function AddTaskForm({ onSubmit, isPending, startedAt }: AddTaskFormProps
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-5 rounded-xl border border-line bg-surface p-4 shadow-sm"
+      className="mb-6 rounded-2xl border border-line bg-surface p-1.5 shadow-(--shadow-lift)"
     >
-      <label htmlFor="description" className="eyebrow text-subtle">
-        New task
-      </label>
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        <label htmlFor="description" className="sr-only">
+          New task
+        </label>
 
-      <div className="mt-2 flex flex-wrap gap-2">
         <input
           id="description"
           ref={input}
@@ -68,43 +69,45 @@ export function AddTaskForm({ onSubmit, isPending, startedAt }: AddTaskFormProps
           autoComplete="off"
           aria-invalid={problem !== null}
           aria-describedby="description-help"
-          className="min-w-56 flex-1 rounded-md border border-line bg-canvas px-3 py-2 text-[15px] placeholder:text-subtle"
+          className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-[15px] outline-none placeholder:text-subtle"
         />
+
+        {trimmed.length > 0 && (
+          <p
+            className={`readout shrink-0 tabular-nums ${
+              tooLong ? 'text-danger' : nearLimit ? 'text-warn' : 'text-subtle'
+            }`}
+          >
+            {trimmed.length}/{MAX_DESCRIPTION_LENGTH}
+          </p>
+        )}
 
         <button
           type="submit"
           disabled={isPending}
-          className="tabular inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="tabular inline-flex shrink-0 items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
         >
           {isPending ? (
             <>
-              <SpinnerIcon />
+              <SpinnerIcon className="size-4" />
               Waiting for a block · {seconds}s
             </>
           ) : (
             <>
-              <PlusIcon />
+              <PlusIcon className="size-4" />
               Add task
             </>
           )}
         </button>
       </div>
 
-      <div className="mt-2 flex items-start justify-between gap-3">
-        <p
-          id="description-help"
-          className={`text-xs ${problem ? 'text-danger' : 'text-muted'}`}
-          role={problem ? 'alert' : undefined}
-        >
-          {problem ?? 'Adding a task sends a transaction. It costs testnet gas and is permanent.'}
-        </p>
-
-        {trimmed.length > 0 && (
-          <p className={`readout shrink-0 pt-px ${tooLong ? 'text-danger' : 'text-subtle'}`}>
-            {trimmed.length}/{MAX_DESCRIPTION_LENGTH}
-          </p>
-        )}
-      </div>
+      <p
+        id="description-help"
+        className={`px-4 pt-1 pb-2 text-xs ${problem ? 'font-medium text-danger' : 'text-subtle'}`}
+        role={problem ? 'alert' : undefined}
+      >
+        {problem ?? 'Adding a task sends a transaction. It costs testnet gas and is permanent.'}
+      </p>
     </form>
   );
 }

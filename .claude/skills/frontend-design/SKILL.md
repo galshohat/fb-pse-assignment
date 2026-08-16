@@ -12,8 +12,9 @@ while doing that.
 ## Visual language
 
 Tailwind, driven by semantic tokens defined once in the stylesheet rather than colour literals
-scattered across components. Both light and dark themes are first-class — define the palette
-in tokens and let the theme swap them.
+scattered across components. The client is light only: `:root` declares `color-scheme: light`
+and defines every colour once. Keep naming components against the semantic tokens anyway — it
+is what makes the palette a single-file change.
 
 - Type scale and spacing come from Tailwind's default scale; do not invent one-off values.
 - Colour carries meaning: neutral for pending work, a single accent for actions, green for

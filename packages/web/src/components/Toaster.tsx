@@ -14,9 +14,9 @@ import { ToastContext, type PushToast, type Toast, type ToastTone } from './toas
 const DISMISS_AFTER_MS = 7_000;
 
 const TONES: Record<ToastTone, { border: string; text: string; Icon: typeof CheckIcon }> = {
-  ok: { border: 'border-l-ok', text: 'text-ok', Icon: CheckIcon },
-  warn: { border: 'border-l-warn', text: 'text-warn', Icon: SpinnerIcon },
-  danger: { border: 'border-l-danger', text: 'text-danger', Icon: AlertIcon },
+  ok: { border: 'border-s-ok', text: 'text-ok', Icon: CheckIcon },
+  warn: { border: 'border-s-warn', text: 'text-warn', Icon: SpinnerIcon },
+  danger: { border: 'border-s-danger', text: 'text-danger', Icon: AlertIcon },
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -60,23 +60,29 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   const { border, text, Icon } = TONES[toast.tone];
 
   return (
-    <div
-      className={`toast-in pointer-events-auto w-full max-w-sm rounded-lg border border-line ${border} border-l-2 bg-surface p-3 shadow-lg`}
-    >
-      <div className="flex items-start gap-2.5">
-        <span className={`mt-0.5 ${text}`}>
+    <div className="toast-in pointer-events-auto w-full max-w-sm overflow-hidden rounded-xl border border-line bg-surface shadow-(--shadow-lift)">
+      {/* The tone stripe runs the full height on the leading edge, so a glance
+          at the stack reads confirmed / in-flight / failed without any text. */}
+      <div className={`flex items-start gap-3 border-s-2 ${border} p-3.5 ps-3`}>
+        <span className={`mt-px shrink-0 ${text}`}>
           <Icon className="size-4" />
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{toast.title}</p>
-          {toast.body && <p className="mt-0.5 text-xs break-words text-muted">{toast.body}</p>}
+          <p className="text-sm leading-snug font-semibold">{toast.title}</p>
+          {/* Tabular figures because bodies carry block numbers and gas, but the
+              sans face because they are sentences, not readouts. */}
+          {toast.body && (
+            <p className="tabular mt-1 text-xs leading-relaxed break-words text-muted">
+              {toast.body}
+            </p>
+          )}
           {toast.link && (
             <a
               href={toast.link.href}
               target="_blank"
               rel="noreferrer noopener"
-              className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-accent transition-opacity hover:opacity-75"
             >
               {toast.link.label}
               <ExternalLinkIcon className="size-3" />
@@ -87,7 +93,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         <button
           type="button"
           onClick={onDismiss}
-          className="-mt-0.5 -mr-0.5 rounded px-1.5 py-0.5 text-lg leading-none text-subtle transition-colors hover:text-fg"
+          className="-mt-1 -me-1 shrink-0 rounded-md px-1.5 py-0.5 text-lg leading-none text-subtle transition-colors hover:bg-sunk hover:text-fg"
           aria-label="Dismiss notification"
         >
           ×

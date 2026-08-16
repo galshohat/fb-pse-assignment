@@ -48,8 +48,8 @@ export function TaskList({
   const visible = tasks?.filter(matches).sort((left, right) => right.id - left.id);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-2.5">
+    <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-(--shadow-rest)">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
         <h2 className="eyebrow text-subtle">On-chain list · newest first</h2>
         {tasks && <FilterTabs tasks={tasks} active={filter} onChange={setFilter} />}
       </div>
@@ -64,7 +64,7 @@ export function TaskList({
       )}
 
       {((visible && visible.length > 0) || pendingAdd) && (
-        <ul className="divide-y divide-line">
+        <ul className="divide-y divide-line rule">
           {pendingAdd && (
             <PendingTaskRow description={pendingAdd.description} startedAt={pendingAdd.startedAt} />
           )}
@@ -92,18 +92,25 @@ function FilterTabs({
   onChange: (filter: Filter) => void;
 }) {
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Filter tasks">
+    <div
+      className="flex items-center gap-0.5 rounded-lg bg-sunk p-0.5"
+      role="group"
+      aria-label="Filter tasks"
+    >
       {FILTERS.map(({ id, label, matches }) => (
         <button
           key={id}
           type="button"
           onClick={() => onChange(id)}
           aria-pressed={active === id}
-          className={`eyebrow rounded-md px-2 py-1 transition-colors ${
-            active === id ? 'bg-accent-soft text-accent' : 'text-subtle hover:text-fg'
+          className={`eyebrow rounded-md px-2.5 py-1.5 transition-all ${
+            active === id
+              ? 'bg-surface text-fg shadow-(--shadow-rest)'
+              : 'text-subtle hover:text-fg'
           }`}
         >
-          {label} <span className="tabular opacity-70">{tasks.filter(matches).length}</span>
+          {label}
+          <span className="ml-1.5 tabular-nums opacity-60">{tasks.filter(matches).length}</span>
         </button>
       ))}
     </div>

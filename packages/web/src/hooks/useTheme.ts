@@ -3,14 +3,49 @@ import { useCallback, useEffect, useState } from 'react';
 /**
  * Theme choice.
  *
- * The stylesheet already follows the operating system on its own, so this only
- * exists to record an override. `data-theme` on the root pins `color-scheme`,
- * which is what the palette's `light-dark()` values read.
+ * The stylesheet follows the operating system on its own, so nothing is pinned
+ * unless the user actually asks for it: `data-theme` is set only once they use
+ * the toggle, and removed if they never have. Writing the resolved system
+ * theme on first load would look identical today and then quietly stop
+ * following the system tomorrow.
  */
 
 export type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'todo:theme';
+
+export function useTheme(): { resolved: Theme; toggle: () => void } {
+  const [choice, setChoice] = useState<Theme | null>(readStored);
+  const [system, setSystem] = useState<Theme>(systemTheme);
+
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = () => setSystem(query.matches ? 'dark' : 'light');
+
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (choice) {
+      document.documentElement.dataset['theme'] = choice;
+    } else {
+      delete document.documentElement.dataset['theme'];
+    }
+
+    try {
+      if (choice) localStorage.setItem(STORAGE_KEY, choice);
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Storage can be denied; the choice then lasts for this page view only.
+    }
+  }, [choice]);
+
+  const resolved = choice ?? system;
+  const toggle = useCallback(() => setChoice(resolved === 'dark' ? 'light' : 'dark'), [resolved]);
+
+  return { resolved, toggle };
+}
 
 function readStored(): Theme | null {
   try {
@@ -23,23 +58,4 @@ function readStored(): Theme | null {
 
 function systemTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-export function useTheme(): { theme: Theme; toggle: () => void } {
-  const [theme, setTheme] = useState<Theme>(() => readStored() ?? systemTheme());
-
-  useEffect(() => {
-    document.documentElement.dataset['theme'] = theme;
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-      // Storage can be denied; the choice then lasts for this page view only.
-    }
-  }, [theme]);
-
-  const toggle = useCallback(() => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
-  }, []);
-
-  return { theme, toggle };
 }

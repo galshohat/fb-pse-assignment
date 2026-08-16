@@ -17,7 +17,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ chain, connection, taskCount }: AppHeaderProps) {
-  const { theme, toggle } = useTheme();
+  const { resolved, toggle } = useTheme();
 
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
@@ -41,9 +41,9 @@ export function AppHeader({ chain, connection, taskCount }: AppHeaderProps) {
             type="button"
             onClick={toggle}
             className="rounded-md border border-line p-1.5 text-muted transition-colors hover:bg-sunk hover:text-fg"
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} theme`}
           >
-            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            {resolved === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
         </div>
       </div>

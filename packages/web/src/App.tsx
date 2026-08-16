@@ -1,3 +1,4 @@
+import { ActivityLog } from './components/ActivityLog.js';
 import { AddTaskForm } from './components/AddTaskForm.js';
 import { AppHeader, type Connection } from './components/AppHeader.js';
 import { TaskList } from './components/TaskList.js';
@@ -38,6 +39,8 @@ export default function App() {
           completing={inFlight}
           onComplete={complete}
         />
+
+        <ActivityLog />
       </main>
 
       <footer className="mx-auto max-w-3xl px-5 pb-10">

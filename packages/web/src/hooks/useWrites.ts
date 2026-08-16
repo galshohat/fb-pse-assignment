@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { addTask, ApiError, completeTask } from '../api/client.js';
 import type { WriteOutcome } from '../api/types.js';
+import { useActivityLog } from '../components/activity-context.js';
 import { useToasts } from '../components/toast-context.js';
 import { TASKS_KEY } from './useTasks.js';
 
@@ -23,8 +24,9 @@ export function useAddTask() {
 
   return useMutation({
     mutationFn: (description: string) => addTask(description),
-    onSuccess: (outcome) => report(outcome, 'added'),
-    onError: (error: Error) => reportFailure(error, report),
+    onSuccess: (outcome, description) => report(outcome, { action: 'add', description }),
+    onError: (error: Error, description) =>
+      report(asFailure(error), { action: 'add', description }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: TASKS_KEY }),
   });
 }
@@ -42,8 +44,8 @@ export function useCompleteTask() {
 
   const mutation = useMutation({
     mutationFn: (id: number) => completeTask(id),
-    onSuccess: (outcome) => report(outcome, 'completed'),
-    onError: (error: Error) => reportFailure(error, report),
+    onSuccess: (outcome, taskId) => report(outcome, { action: 'complete', taskId }),
+    onError: (error: Error, taskId) => report(asFailure(error), { action: 'complete', taskId }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: TASKS_KEY }),
   });
 
@@ -66,7 +68,12 @@ export function useCompleteTask() {
   return { complete, inFlight };
 }
 
-type Report = (outcome: WriteOutcome | FailedWrite, verb: string) => void;
+/** Which write this was, known before the chain has said anything about it. */
+interface WriteContext {
+  readonly action: 'add' | 'complete';
+  readonly taskId?: number;
+  readonly description?: string;
+}
 
 interface FailedWrite {
   readonly status: 'failed';
@@ -74,22 +81,40 @@ interface FailedWrite {
   readonly message: string;
 }
 
+type Report = (outcome: WriteOutcome | FailedWrite, context: WriteContext) => void;
+
 /**
- * Turns an outcome into something the user reads. The distinction that matters
- * is confirmed versus pending: a pending write is on the network but unmined,
- * so it is reported honestly and its hash is kept on screen until dismissed.
+ * Every outcome goes two places: a toast, which the user sees now, and the
+ * session log, which they can still read afterwards.
+ *
+ * The distinction that matters throughout is confirmed versus pending. A
+ * pending write is on the network but unmined, so it is reported as exactly
+ * that and its hash is kept — dropping it would leave the user with no way to
+ * find a transaction that is still going to land.
  */
 function useOutcomeReporter(): Report {
   const push = useToasts();
+  const { record } = useActivityLog();
 
   return useCallback<Report>(
-    (outcome, verb) => {
+    (outcome, context) => {
+      const verb = context.action === 'add' ? 'added' : 'completed';
+
       if (outcome.status === 'confirmed') {
         push({
           tone: 'ok',
           title: `Task #${outcome.task.id} ${verb}`,
           body: `Mined in block ${outcome.transaction.blockNumber} · ${formatGas(outcome.transaction.gasUsed)} gas`,
           link: { href: outcome.transaction.explorerUrl, label: 'View transaction' },
+        });
+        record({
+          ...context,
+          status: 'confirmed',
+          taskId: outcome.task.id,
+          hash: outcome.transaction.hash,
+          explorerUrl: outcome.transaction.explorerUrl,
+          blockNumber: outcome.transaction.blockNumber,
+          gasUsed: outcome.transaction.gasUsed,
         });
         return;
       }
@@ -102,12 +127,20 @@ function useOutcomeReporter(): Report {
           link: { href: outcome.transaction.explorerUrl, label: 'Track it on Etherscan' },
           sticky: true,
         });
+        record({
+          ...context,
+          status: 'pending',
+          hash: outcome.transaction.hash,
+          explorerUrl: outcome.transaction.explorerUrl,
+          detail: outcome.message,
+        });
         return;
       }
 
       push({ tone: 'danger', title: outcome.title, body: outcome.message });
+      record({ ...context, status: 'failed', detail: outcome.message });
     },
-    [push],
+    [push, record],
   );
 }
 
@@ -126,17 +159,14 @@ const FAILURE_TITLES: Record<string, string> = {
   CHAIN_UNAVAILABLE: 'The network is unreachable',
 };
 
-function reportFailure(error: Error, report: Report): void {
+function asFailure(error: Error): FailedWrite {
   const code = error instanceof ApiError ? error.code : 'UNEXPECTED_ERROR';
 
-  report(
-    {
-      status: 'failed',
-      title: FAILURE_TITLES[code] ?? 'The write failed',
-      message: error.message,
-    },
-    'failed',
-  );
+  return {
+    status: 'failed',
+    title: FAILURE_TITLES[code] ?? 'The write failed',
+    message: error.message,
+  };
 }
 
 /** `77826` reads as `77,826`: gas figures are compared, so grouping helps. */

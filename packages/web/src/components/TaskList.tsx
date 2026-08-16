@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Task } from '../api/types.js';
 import { EmptyState, LoadFailedState, NoMatchesState, TaskListSkeleton } from './states.js';
-import { TaskRow } from './TaskRow.js';
+import { PendingTaskRow, TaskRow } from './TaskRow.js';
 
 /**
  * The contract's list.
@@ -24,9 +24,22 @@ interface TaskListProps {
   readonly isPending: boolean;
   readonly error: Error | null;
   readonly onRetry: () => void;
+  /** A task that has been sent but has no id yet, shown above the real rows. */
+  readonly pendingAdd: { description: string; startedAt: number } | undefined;
+  /** Task id → when its completion was sent. */
+  readonly completing: ReadonlyMap<number, number>;
+  readonly onComplete: (id: number) => void;
 }
 
-export function TaskList({ tasks, isPending, error, onRetry }: TaskListProps) {
+export function TaskList({
+  tasks,
+  isPending,
+  error,
+  onRetry,
+  pendingAdd,
+  completing,
+  onComplete,
+}: TaskListProps) {
   const [filter, setFilter] = useState<Filter>('all');
 
   const matches = FILTERS.find((candidate) => candidate.id === filter)?.matches ?? (() => true);
@@ -43,15 +56,25 @@ export function TaskList({ tasks, isPending, error, onRetry }: TaskListProps) {
 
       {isPending && <TaskListSkeleton />}
       {error && <LoadFailedState error={error} onRetry={onRetry} />}
-      {tasks?.length === 0 && <EmptyState />}
-      {tasks && tasks.length > 0 && visible?.length === 0 && (
+      {/* A write in flight takes precedence over both: there is something to
+          show, it just has no id yet. */}
+      {tasks?.length === 0 && !pendingAdd && <EmptyState />}
+      {tasks && tasks.length > 0 && visible?.length === 0 && !pendingAdd && (
         <NoMatchesState onClear={() => setFilter('all')} />
       )}
 
-      {visible && visible.length > 0 && (
+      {((visible && visible.length > 0) || pendingAdd) && (
         <ul className="divide-y divide-line">
-          {visible.map((task) => (
-            <TaskRow key={task.id} task={task} />
+          {pendingAdd && (
+            <PendingTaskRow description={pendingAdd.description} startedAt={pendingAdd.startedAt} />
+          )}
+          {visible?.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              completingSince={completing.get(task.id)}
+              onComplete={onComplete}
+            />
           ))}
         </ul>
       )}

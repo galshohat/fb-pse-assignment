@@ -30,7 +30,9 @@ export function AppHeader({ chain, connection, taskCount }: AppHeaderProps) {
           <h1 className="text-[15px] leading-tight font-semibold tracking-tight">
             Blockchain TODO
           </h1>
-          <p className="eyebrow text-subtle">Tasks stored in a smart contract</p>
+          {/* Hidden on narrow screens, where it wraps into the status pill and
+              the strip below already says what this is. */}
+          <p className="eyebrow hidden text-subtle sm:block">Tasks stored in a smart contract</p>
         </div>
 
         <div className="ml-auto flex items-center gap-2">

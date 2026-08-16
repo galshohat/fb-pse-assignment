@@ -1,6 +1,11 @@
 export { todoListAbi, CONTRACT_REVERTS } from './abi.js';
 export { loadCoreConfig, ConfigError, type CoreConfig } from './config.js';
-export { CHAIN, createChainClients, explorerAddressUrl, explorerTransactionUrl } from './clients.js';
+export {
+  CHAIN,
+  createChainClients,
+  explorerAddressUrl,
+  explorerTransactionUrl,
+} from './clients.js';
 export type { ChainClients } from './clients.js';
 export {
   TodoError,

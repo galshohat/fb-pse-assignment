@@ -30,7 +30,7 @@ file, a log line, or an error message. `.env` is git-ignored — keep it that wa
 Check the workspace before running anything:
 
 ```bash
-npm run verify      # typecheck, lint, 123 tests. Touches no network
+npm run verify      # typecheck, lint, 124 tests. Touches no network
 ```
 
 ## Run the services

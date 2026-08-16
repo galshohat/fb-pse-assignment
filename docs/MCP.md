@@ -253,6 +253,22 @@ What the implementation is careful about:
 - **Audience is validated.** A token minted for another resource is not accepted
   here.
 
+### What this authorization server does not do
+
+Worth saying plainly, because the gap is deliberate rather than overlooked:
+
+- **It authenticates nobody.** There is no login. Whoever reaches the consent
+  page can approve a client and pick a role for it, so the security boundary is
+  "can you reach this page", not "who are you". That is honest for a service on
+  localhost and wrong for anything else — and it is the specific job a real
+  identity provider does. The verifier seam is where one plugs in.
+- **Consent state and access tokens live in memory.** A restart invalidates
+  in-flight authorization requests and forces clients to refresh, which is the
+  right outcome for a sixty-second flow and a fifteen-minute token. Refresh
+  tokens, which must survive a restart, are hashed on disk.
+- **Credentials are a single JSON file.** Fine for one process on one host;
+  several instances behind a load balancer would need shared storage.
+
 ## Why keep API keys as well
 
 Because a browser flow is the wrong shape for some callers, and pretending

@@ -1,0 +1,30 @@
+{
+  "name": "@todo/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "REST API over the TodoList contract",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "node --env-file-if-exists=../../.env ../../node_modules/.bin/tsx watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@todo/core": "1.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2"
+  }
+}

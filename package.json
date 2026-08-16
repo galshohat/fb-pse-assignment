@@ -20,7 +20,10 @@
     "format:check": "prettier --check .",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "clean": "tsc --build --clean",
-    "smoke": "npm run build && node --env-file-if-exists=.env node_modules/.bin/tsx scripts/smoke.ts"
+    "smoke": "npm run build && node --env-file-if-exists=.env node_modules/.bin/tsx scripts/smoke.ts",
+    "dev:api": "npm run dev --workspace @todo/api",
+    "dev:mcp": "npm run dev --workspace @todo/mcp",
+    "dev:web": "npm run dev --workspace @todo/web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

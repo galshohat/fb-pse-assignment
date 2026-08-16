@@ -26,8 +26,17 @@ export type Role = keyof typeof ROLES;
 
 export const ROLE_NAMES = Object.keys(ROLES) as Role[];
 
+/**
+ * Guards every place a role name arrives from outside: the credential CLI and
+ * the OAuth consent form.
+ *
+ * `Object.hasOwn` rather than `in`, because `in` walks the prototype chain and
+ * would accept "__proto__" or "toString" as roles. Those then fail when their
+ * scopes are looked up, turning a rejected input into a crash inside the
+ * authorization flow.
+ */
 export function isRole(value: string): value is Role {
-  return value in ROLES;
+  return Object.hasOwn(ROLES, value);
 }
 
 export function scopesForRole(role: Role): Scope[] {

@@ -25,6 +25,21 @@ function heading(text: string): void {
   console.log(`\n${text}\n${'-'.repeat(text.length)}`);
 }
 
+/**
+ * Formats a task on one line.
+ *
+ * Passing the object to `console.log` instead would hand it to `util.inspect`,
+ * which wraps on the terminal width — so the same run reads one way in a wide
+ * terminal and another when redirected to a file, where the width defaults to
+ * 80. Output that a person compares against a previous run should not depend
+ * on the size of the window it ran in.
+ */
+function describeTask(task: Task | undefined): string {
+  if (!task) return 'not found';
+  const state = task.completed ? 'completed' : 'pending';
+  return `#${task.id} ${JSON.stringify(task.description)} — ${state}`;
+}
+
 /** Runs an operation that is expected to fail, and reports how it failed. */
 async function expectRejection(label: string, operation: () => Promise<unknown>): Promise<void> {
   try {
@@ -56,7 +71,7 @@ if (balance === 0n) {
 heading('Read');
 const before: Task[] = await service.getTasks();
 console.log(`  ${before.length} tasks on-chain`);
-console.log('  most recent:', before.at(-1));
+console.log('  most recent:', describeTask(before.at(-1)));
 
 heading('Rejected before spending gas');
 await expectRejection('empty description  ', () => service.addTask('   '));
@@ -67,13 +82,13 @@ await expectRejection('unknown task id    ', () => service.completeTask(999_999)
 
 heading('Add a task (real transaction)');
 const added = await service.addTask(`smoke test ${new Date().toISOString()}`);
-console.log('  task:', added.task);
+console.log('  task:', describeTask(added.task));
 console.log('  gas: ', added.transaction.gasUsed, 'in block', added.transaction.blockNumber);
 console.log('  tx:  ', added.transaction.explorerUrl);
 
 heading('Complete it (real transaction)');
 const completed = await service.completeTask(added.task.id);
-console.log('  task:', completed.task);
+console.log('  task:', describeTask(completed.task));
 console.log(
   '  gas: ',
   completed.transaction.gasUsed,
@@ -89,7 +104,7 @@ heading('Verify final state');
 const after = await service.getTasks();
 const ours = after.find((task) => task.id === added.task.id);
 console.log(`  task count: ${before.length} -> ${after.length}`);
-console.log('  our task:  ', ours);
+console.log('  our task:  ', describeTask(ours));
 
 if (!ours?.completed) {
   console.error('\nThe task we completed does not read back as completed.');

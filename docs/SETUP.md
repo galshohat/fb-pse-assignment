@@ -118,16 +118,28 @@ npm run smoke
 ```
 
 ```text
+Add a task (real transaction)
+-----------------------------
+  task: #37 "smoke test 2026-08-16T12:29:25.143Z" — pending
+  gas:  122680 in block 11501156
+  tx:   https://sepolia.etherscan.io/tx/0x677141f766eacabb…
+
 Complete it (real transaction)
-  task: { id: 31, description: 'smoke test 2026-08-16T10:34:58.630Z', completed: true }
-  gas:  47358 in block 11500603
-  tx:   https://sepolia.etherscan.io/tx/0xce5ac0d5…
+------------------------------
+  task: #37 "smoke test 2026-08-16T12:29:25.143Z" — completed
+  gas:  47358 in block 11501157
+  tx:   https://sepolia.etherscan.io/tx/0x6bc93dcabd1fe819…
 
 Completing it again is rejected without a transaction
-  repeat completion  : TASK_ALREADY_COMPLETED — Task 31 is already completed
+-----------------------------------------------------
+  repeat completion  : TASK_ALREADY_COMPLETED — Task 37 is already completed
 
 All checks passed.
 ```
+
+It checks the refusals too — an empty description, an oversized one, a
+negative and a fractional task id, and an id that does not exist — and each of
+those is reported without a transaction being sent.
 
 Nothing in `npm test` does this. The test suite must run offline, on a machine
 with no funded wallet, for free.

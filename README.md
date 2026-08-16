@@ -5,6 +5,8 @@ the Sepolia testnet stores the tasks; this workspace provides everything around 
 API, an authenticated MCP server that lets AI assistants manage the list conversationally,
 and a web client.
 
+![The web client](docs/assets/web-list.png)
+
 ## Architecture
 
 ```
@@ -36,6 +38,12 @@ npm run dev:web          # Web client    → http://localhost:5173
 The API documents itself: browse and try the endpoints at
 [localhost:3000/docs](http://localhost:3000/docs), or fetch the OpenAPI document from
 `/openapi.json`.
+
+To prove the whole path end to end against the live contract — this one spends testnet gas:
+
+```bash
+npm run smoke
+```
 
 ## Configuration
 

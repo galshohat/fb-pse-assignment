@@ -8,9 +8,10 @@ import {
   type TodoService,
   type WriteResult,
 } from '@todo/core';
+import type { Server } from 'node:http';
 import { pino } from 'pino';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.js';
 
 const TX_HASH = `0x${'cd'.repeat(32)}` as const;
@@ -41,13 +42,43 @@ const app = createApp({
   rateLimit: false,
 });
 
+let server: Server;
+
+/**
+ * One bound server for the whole file, rather than letting supertest create and
+ * discard one per request.
+ *
+ * Test files run in parallel, and every discarded server releases an ephemeral
+ * port that the operating system is free to hand straight to another file's
+ * server. A request occasionally arrived at the wrong app and came back as a
+ * 404 for a route that plainly exists — roughly one full-suite run in thirty,
+ * across whichever file happened to lose the race. Binding once removes the
+ * port churn that caused it.
+ */
+beforeAll(async () => {
+  server = app.listen(0);
+
+  // `listen` binds asynchronously. Without waiting, supertest can find a server
+  // with no address yet and call `listen` on it a second time, which throws.
+  if (!server.listening) {
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
+  }
+});
+
+afterAll(() => {
+  server.close();
+});
+
 beforeEach(() => vi.resetAllMocks());
 
 describe('GET /tasks', () => {
   it('returns the task list as a plain array', async () => {
     service.getTasks.mockResolvedValue([{ id: 0, description: 'first', completed: true }]);
 
-    const response = await request(app).get('/tasks').expect(200);
+    const response = await request(server).get('/tasks').expect(200);
 
     expect(response.body).toEqual([{ id: 0, description: 'first', completed: true }]);
   });
@@ -55,7 +86,7 @@ describe('GET /tasks', () => {
   it('reports an unreachable chain as retryable rather than as a bug', async () => {
     service.getTasks.mockRejectedValue(new ChainUnavailableError());
 
-    const response = await request(app).get('/tasks').expect(503);
+    const response = await request(server).get('/tasks').expect(503);
 
     expect(response.headers['retry-after']).toBe('5');
     expect(response.body.error.code).toBe('CHAIN_UNAVAILABLE');
@@ -66,7 +97,10 @@ describe('POST /tasks', () => {
   it('confirms a write and returns the transaction hash', async () => {
     service.addTask.mockResolvedValue(writeResult);
 
-    const response = await request(app).post('/tasks').send({ description: 'ship it' }).expect(201);
+    const response = await request(server)
+      .post('/tasks')
+      .send({ description: 'ship it' })
+      .expect(201);
 
     expect(response.body).toEqual({
       status: 'confirmed',
@@ -85,14 +119,14 @@ describe('POST /tasks', () => {
       'description must not exceed 500 characters',
     ],
   ])('rejects %s without calling the service', async (_label, body, message) => {
-    const response = await request(app).post('/tasks').send(body).expect(400);
+    const response = await request(server).post('/tasks').send(body).expect(400);
 
     expect(response.body.error).toMatchObject({ code: 'VALIDATION_FAILED', message });
     expect(service.addTask).not.toHaveBeenCalled();
   });
 
   it('rejects a body that is not valid JSON', async () => {
-    const response = await request(app)
+    const response = await request(server)
       .post('/tasks')
       .set('Content-Type', 'application/json')
       .send('{"description":')
@@ -102,7 +136,7 @@ describe('POST /tasks', () => {
   });
 
   it('rejects a body larger than the limit', async () => {
-    const response = await request(app)
+    const response = await request(server)
       .post('/tasks')
       .send({ description: 'x'.repeat(20_000) })
       .expect(413);
@@ -113,7 +147,7 @@ describe('POST /tasks', () => {
   it('presents a contract revert as a rejected request, not a server fault', async () => {
     service.addTask.mockRejectedValue(new TransactionRevertedError('execution reverted', TX_HASH));
 
-    const response = await request(app).post('/tasks').send({ description: 'x' }).expect(422);
+    const response = await request(server).post('/tasks').send({ description: 'x' }).expect(422);
 
     expect(response.body.error.code).toBe('TRANSACTION_REVERTED');
   });
@@ -121,7 +155,7 @@ describe('POST /tasks', () => {
   it('returns 202 and keeps the hash when confirmation times out', async () => {
     service.addTask.mockRejectedValue(new TransactionTimeoutError(TX_HASH, 120_000));
 
-    const response = await request(app).post('/tasks').send({ description: 'x' }).expect(202);
+    const response = await request(server).post('/tasks').send({ description: 'x' }).expect(202);
 
     expect(response.body).toMatchObject({
       status: 'pending',
@@ -132,7 +166,7 @@ describe('POST /tasks', () => {
   it('never leaks internals when something unexpected fails', async () => {
     service.addTask.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.5:8545'));
 
-    const response = await request(app).post('/tasks').send({ description: 'x' }).expect(500);
+    const response = await request(server).post('/tasks').send({ description: 'x' }).expect(500);
 
     expect(response.body).toEqual({
       error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
@@ -148,7 +182,7 @@ describe('POST /tasks/:id/complete', () => {
       task: { ...writeResult.task, completed: true },
     });
 
-    const response = await request(app).post('/tasks/7/complete').expect(200);
+    const response = await request(server).post('/tasks/7/complete').expect(200);
 
     expect(response.body.status).toBe('confirmed');
     expect(response.body.task.completed).toBe(true);
@@ -158,7 +192,7 @@ describe('POST /tasks/:id/complete', () => {
   it('accepts task id zero, which is a real task', async () => {
     service.completeTask.mockResolvedValue(writeResult);
 
-    await request(app).post('/tasks/0/complete').expect(200);
+    await request(server).post('/tasks/0/complete').expect(200);
 
     expect(service.completeTask).toHaveBeenCalledWith(0);
   });
@@ -168,7 +202,7 @@ describe('POST /tasks/:id/complete', () => {
     ['a negative id', '-1'],
     ['a fractional id', '1.5'],
   ])('rejects %s without calling the service', async (_label, id) => {
-    await request(app).post(`/tasks/${id}/complete`).expect(400);
+    await request(server).post(`/tasks/${id}/complete`).expect(400);
 
     expect(service.completeTask).not.toHaveBeenCalled();
   });
@@ -176,7 +210,7 @@ describe('POST /tasks/:id/complete', () => {
   it('returns 404 with the task id when the task does not exist', async () => {
     service.completeTask.mockRejectedValue(new TaskNotFoundError(99));
 
-    const response = await request(app).post('/tasks/99/complete').expect(404);
+    const response = await request(server).post('/tasks/99/complete').expect(404);
 
     expect(response.body.error).toMatchObject({
       code: 'TASK_NOT_FOUND',
@@ -187,7 +221,7 @@ describe('POST /tasks/:id/complete', () => {
   it('returns 409 when the task is already completed', async () => {
     service.completeTask.mockRejectedValue(new TaskAlreadyCompletedError(7));
 
-    const response = await request(app).post('/tasks/7/complete').expect(409);
+    const response = await request(server).post('/tasks/7/complete').expect(409);
 
     expect(response.body.error.code).toBe('TASK_ALREADY_COMPLETED');
   });
@@ -195,7 +229,7 @@ describe('POST /tasks/:id/complete', () => {
   it('reports the offending field for a core validation failure', async () => {
     service.completeTask.mockRejectedValue(new ValidationError('bad input', 'id'));
 
-    const response = await request(app).post('/tasks/7/complete').expect(400);
+    const response = await request(server).post('/tasks/7/complete').expect(400);
 
     expect(response.body.error.details).toEqual({ field: 'id' });
   });
@@ -203,14 +237,14 @@ describe('POST /tasks/:id/complete', () => {
 
 describe('service basics', () => {
   it('answers a health check without touching the chain', async () => {
-    const response = await request(app).get('/health').expect(200);
+    const response = await request(server).get('/health').expect(200);
 
     expect(response.body.status).toBe('ok');
     expect(service.getTasks).not.toHaveBeenCalled();
   });
 
   it('reports which contract it is pointed at, so a client need not be told', async () => {
-    const response = await request(app).get('/health').expect(200);
+    const response = await request(server).get('/health').expect(200);
 
     expect(response.body.chain).toEqual({
       name: 'Sepolia',
@@ -221,7 +255,7 @@ describe('service basics', () => {
   });
 
   it('returns a structured 404 for an unknown route', async () => {
-    const response = await request(app).get('/nope').expect(404);
+    const response = await request(server).get('/nope').expect(404);
 
     expect(response.body.error.code).toBe('ROUTE_NOT_FOUND');
   });
@@ -229,13 +263,13 @@ describe('service basics', () => {
   it('allows the configured browser origin', async () => {
     service.getTasks.mockResolvedValue([]);
 
-    const response = await request(app).get('/tasks').set('Origin', 'http://localhost:5173');
+    const response = await request(server).get('/tasks').set('Origin', 'http://localhost:5173');
 
     expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
   });
 
   it('sets security headers and hides the framework', async () => {
-    const response = await request(app).get('/health');
+    const response = await request(server).get('/health');
 
     expect(response.headers['x-content-type-options']).toBe('nosniff');
     expect(response.headers['x-powered-by']).toBeUndefined();

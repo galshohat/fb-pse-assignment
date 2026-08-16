@@ -1,10 +1,11 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TodoService, WriteResult } from '@todo/core';
 import { pino } from 'pino';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditLog } from './audit.js';
 import { TodoOAuthProvider } from './auth/oauth/provider.js';
 import { createOAuthRoutes } from './auth/oauth/router.js';
@@ -33,11 +34,22 @@ const service = {
 let auditPath: string;
 let viewerKey: string;
 let operatorKey: string;
-let app: ReturnType<typeof createMcpApp>;
+let server: Server;
 
-beforeEach(() => {
-  vi.resetAllMocks();
-
+/**
+ * The application is built once for the whole file rather than per test.
+ *
+ * Rebuilding it meant supertest created and tore down an ephemeral server for
+ * every request, and roughly one request in several hundred then came back as
+ * Express's default 404 — the route had not been reached at all. It reproduced
+ * only under the test runner, never against the real server, so it was the
+ * harness rather than the service; building the fixture once removes the churn
+ * that provoked it, and is faster besides.
+ *
+ * What genuinely varies between tests is the mock behaviour and the audit file,
+ * and both are reset below.
+ */
+beforeAll(async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'todo-mcp-server-'));
   auditPath = join(dataDir, 'audit.jsonl');
 
@@ -72,7 +84,7 @@ beforeEach(() => {
     refreshTokenTtlSeconds: 86_400,
   });
 
-  app = createMcpApp({
+  const app = createMcpApp({
     service: service as unknown as TodoService,
     audit: new AuditLog(auditPath, logger),
     verifier,
@@ -85,11 +97,33 @@ beforeEach(() => {
       logger,
     }),
   });
+
+  server = app.listen(0);
+
+  // `listen` binds asynchronously. Without waiting, supertest can find a server
+  // with no address yet and call `listen` on it a second time, which throws and
+  // takes the whole file down with it.
+  if (!server.listening) {
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
+  }
+});
+
+afterAll(() => {
+  server.close();
+});
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  // The audit assertions are about what this test wrote, not the file's history.
+  writeFileSync(auditPath, '');
 });
 
 /** Issues a JSON-RPC call the way an MCP client would. */
 function rpc(key: string | undefined, body: Record<string, unknown>) {
-  const call = request(app)
+  const call = request(server)
     .post('/mcp')
     .set('Accept', 'application/json, text/event-stream')
     .set('Content-Type', 'application/json');
@@ -101,7 +135,15 @@ function rpc(key: string | undefined, body: Record<string, unknown>) {
 /** Responses arrive as server-sent events; this pulls the JSON-RPC payload out. */
 function payload(text: string): { result?: Record<string, unknown> } {
   const line = text.split('\n').find((candidate) => candidate.startsWith('data: '));
-  return JSON.parse(line?.slice(6) ?? '{}') as { result?: Record<string, unknown> };
+
+  // Without this, a response that is not an SSE stream — an auth failure, say —
+  // surfaces as "cannot read properties of undefined" several lines later, which
+  // says nothing about what actually came back.
+  if (!line) {
+    throw new Error(`Expected a server-sent event payload. Got: ${text.slice(0, 400)}`);
+  }
+
+  return JSON.parse(line.slice(6)) as { result?: Record<string, unknown> };
 }
 
 function resultText(text: string): string {
@@ -140,7 +182,7 @@ describe('authentication', () => {
   });
 
   it('serves protected resource metadata so a client can discover the flow', async () => {
-    const response = await request(app).get('/.well-known/oauth-protected-resource').expect(200);
+    const response = await request(server).get('/.well-known/oauth-protected-resource').expect(200);
 
     expect(response.body.scopes_supported).toEqual(
       expect.arrayContaining(['tasks:read', 'tasks:write']),
@@ -265,8 +307,8 @@ describe('confirmation before writing', () => {
       params: { name: 'addTask', arguments: { description: 'ship it', confirm: true } },
     });
 
-    expect(service.addTask).toHaveBeenCalledWith('ship it');
     expect(resultText(response.text)).toContain('Added task #5');
+    expect(service.addTask).toHaveBeenCalledWith('ship it');
     expect(auditEntries()).toEqual([
       expect.objectContaining({ outcome: 'success', transactionHash: TX_HASH }),
     ]);

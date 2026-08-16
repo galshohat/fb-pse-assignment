@@ -67,7 +67,14 @@ export function createMcpApp({
       resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(new URL(publicUrl)),
     }),
     (req, res) => {
-      void node(req, res, req.body);
+      // The promise is handled rather than discarded: a rejection here would
+      // otherwise leave the request hanging with nothing logged, which is the
+      // worst possible failure mode for a client waiting on a tool call.
+      void node(req, res, req.body).catch((error: unknown) => {
+        logger.error({ err: error }, 'MCP request handler failed');
+        if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
+        else res.end();
+      });
     },
   );
 

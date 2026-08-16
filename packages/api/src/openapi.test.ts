@@ -4,9 +4,10 @@ import {
   type TodoService,
   type WriteResult,
 } from '@todo/core';
+import type { Server } from 'node:http';
 import { pino } from 'pino';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.js';
 import { buildOpenApiDocument } from './openapi.js';
 import {
@@ -39,6 +40,23 @@ const app = createApp({
   rateLimit: false,
 });
 
+let server: Server;
+
+/** Bound once for the file; see the note in app.test.ts for why. */
+beforeAll(async () => {
+  server = app.listen(0);
+  if (!server.listening) {
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
+  }
+});
+
+afterAll(() => {
+  server.close();
+});
+
 beforeEach(() => vi.resetAllMocks());
 
 describe('the published document', () => {
@@ -59,17 +77,17 @@ describe('the published document', () => {
   });
 
   it('is served over HTTP for tooling to consume', async () => {
-    const response = await request(app).get('/openapi.json').expect(200);
+    const response = await request(server).get('/openapi.json').expect(200);
 
     expect(response.body.openapi).toBe('3.0.3');
     expect(response.body.info.title).toBe('Blockchain TODO API');
   });
 
   it('serves a browsable page with its own assets, so it works offline', async () => {
-    const page = await request(app).get('/docs/').expect(200);
+    const page = await request(server).get('/docs/').expect(200);
     expect(page.text).toContain('swagger-ui');
 
-    await request(app).get('/docs/swagger-ui.css').expect(200);
+    await request(server).get('/docs/swagger-ui.css').expect(200);
   });
 
   it('documents the write outcomes that are easy to get wrong', () => {
@@ -108,7 +126,7 @@ describe('responses match what the document promises', () => {
   it('GET /tasks', async () => {
     service.getTasks.mockResolvedValue([{ id: 0, description: 'first', completed: true }]);
 
-    const response = await request(app).get('/tasks').expect(200);
+    const response = await request(server).get('/tasks').expect(200);
 
     expect(() => taskListResponse.parse(response.body)).not.toThrow();
   });
@@ -116,7 +134,10 @@ describe('responses match what the document promises', () => {
   it('POST /tasks on success', async () => {
     service.addTask.mockResolvedValue(writeResult);
 
-    const response = await request(app).post('/tasks').send({ description: 'ship it' }).expect(201);
+    const response = await request(server)
+      .post('/tasks')
+      .send({ description: 'ship it' })
+      .expect(201);
 
     expect(() => confirmedWriteResponse.parse(response.body)).not.toThrow();
   });
@@ -124,7 +145,7 @@ describe('responses match what the document promises', () => {
   it('POST /tasks/:id/complete on success', async () => {
     service.completeTask.mockResolvedValue(writeResult);
 
-    const response = await request(app).post('/tasks/7/complete').expect(200);
+    const response = await request(server).post('/tasks/7/complete').expect(200);
 
     expect(() => confirmedWriteResponse.parse(response.body)).not.toThrow();
   });
@@ -132,14 +153,14 @@ describe('responses match what the document promises', () => {
   it('a write that does not confirm in time', async () => {
     service.addTask.mockRejectedValue(new TransactionTimeoutError(TX_HASH, 120_000));
 
-    const response = await request(app).post('/tasks').send({ description: 'x' }).expect(202);
+    const response = await request(server).post('/tasks').send({ description: 'x' }).expect(202);
 
     expect(() => pendingWriteResponse.parse(response.body)).not.toThrow();
   });
 
   it.each([
-    ['a validation failure', () => request(app).post('/tasks').send({}), 400],
-    ['an unknown route', () => request(app).get('/nope'), 404],
+    ['a validation failure', () => request(server).post('/tasks').send({}), 400],
+    ['an unknown route', () => request(server).get('/nope'), 404],
   ])('%s', async (_label, call, status) => {
     const response = await call().expect(status);
 
@@ -149,14 +170,14 @@ describe('responses match what the document promises', () => {
   it('a rejected task, with its structured details', async () => {
     service.completeTask.mockRejectedValue(new TaskAlreadyCompletedError(7));
 
-    const response = await request(app).post('/tasks/7/complete').expect(409);
+    const response = await request(server).post('/tasks/7/complete').expect(409);
 
     const parsed = errorResponse.parse(response.body);
     expect(parsed.error.details).toEqual({ taskId: 7 });
   });
 
   it('GET /health', async () => {
-    const response = await request(app).get('/health').expect(200);
+    const response = await request(server).get('/health').expect(200);
 
     expect(() => healthResponse.parse(response.body)).not.toThrow();
   });

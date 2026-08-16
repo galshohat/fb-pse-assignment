@@ -1,8 +1,7 @@
 # What this is, without the jargon
 
 A shared to-do list that lives on a blockchain, and three ways to use it: a web
-page, a programming interface, and — the interesting part — an AI assistant you
-can simply talk to.
+page, a programming interface, and an AI assistant you can talk to.
 
 No blockchain knowledge needed to read this.
 
@@ -49,12 +48,20 @@ it does is recorded.
 Six checks stand between "the assistant decided to do something" and "money was
 spent on the blockchain". Every one of them can stop it.
 
+These are the safeguards on the **assistant's** route in. The web page talks to
+the programming interface, which deliberately has no credentials of its own: it
+is an internal service, and the expectation is that it sits behind whatever
+sign-in the surrounding system already has. Anyone who can reach it directly can
+spend gas through it, limited only by a cap on how many changes a minute it will
+accept. That is a reasonable arrangement for a service on a private network and
+not one to expose to the internet as it stands.
+
 ```mermaid
 flowchart TB
     A["1 · Who is this?<br/>A valid, unexpired credential"] --> B
     B["2 · Are they allowed?<br/>Reading and changing are separate permissions"] --> C
     C["3 · Does the request make sense?<br/>Checked before anything is spent"] --> D
-    D["4 · Has a person approved it?<br/>Asked every time, for every change"] --> E
+    D["4 · Has it been confirmed?<br/>A second, explicit go-ahead for every change"] --> E
     E["5 · Would it actually work?<br/>Rehearsed against the network first"] --> F
     F["6 · Did it really happen?<br/>Reported only once the network confirms"] --> G
     G["Recorded in the audit log<br/>— including everything that was refused"]
@@ -77,10 +84,20 @@ permission layer is not one of several safety nets. It is the only one.
 not exist, is refused before anything is spent. A doomed request still costs a
 fee if you let it reach the network, so we do not let it.
 
-**Has a person approved it?** Before any change, the assistant has to ask, and
-a person has to say yes. Anything else — no answer, a cancel, a closed window —
-means nothing happens. There is no way for an assistant to spend anything on a
-maybe.
+**Has the change been confirmed?** No change happens on a first request. The
+server refuses it and replies with a plain-language description of exactly what
+would be done, and only a second, explicitly confirming request goes ahead.
+Where the assistant's software supports it, that confirmation is a prompt shown
+to you directly, and a cancel or a closed window means nothing is sent.
+
+Worth being precise about the limit, because it is the difference between two
+quite different promises: the server guarantees that nothing happens without a
+deliberate second step, and it records every unconfirmed attempt. It cannot by
+itself guarantee that a human, rather than the assistant, took that step — an
+assistant is capable of confirming its own request. What keeps a person in the
+loop is the approval prompt in the assistant's own software. If that matters in
+your setting, use a viewer credential for the assistant and keep the ability to
+spend somewhere a person controls.
 
 **Would it actually work?** The change is rehearsed against the network first.
 If the rehearsal fails, nothing is sent.
@@ -121,12 +138,13 @@ I actually send?":
 
 ![Session log](assets/web-activity.png)
 
-## Honest limitations
+## Limitations
 
-- **It is on a practice network.** Sepolia behaves exactly like the real
-  Ethereum network but its money has no value. Moving to the real thing changes
-  no code — it changes who is allowed to hold the key, which is a much bigger
-  question than a configuration change.
+- **It is on a practice network.** Sepolia behaves like the real Ethereum
+  network but its money has no value. Moving to the real one is a small code
+  change — the network is currently fixed rather than configurable — and a much
+  larger governance question about who is allowed to hold a key that spends
+  real money.
 - **The list is shared and public.** This particular contract has one global
   list with no owner, so anyone using it sees everyone's tasks and can complete
   any of them. Fine for a demonstration; a real deployment would want a contract

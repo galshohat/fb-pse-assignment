@@ -16,9 +16,9 @@ flowchart LR
     rpc --> contract[("TodoList contract<br/>0xdF52…95c8")]
 ```
 
-Three services run independently — each has its own port, its own start script,
-its own `/health` — and share one library that owns every piece of blockchain
-knowledge in the system.
+Three services run independently — each with its own port and start script, and
+a `/health` endpoint on the two that are servers — and share one library that
+owns every piece of blockchain knowledge in the system.
 
 ## Why `core` is a library and not a fourth service
 
@@ -33,9 +33,8 @@ library, `core` is imported at compile time, which means the REST and MCP layers
 cannot disagree about how a transaction is sent, what counts as success, or what
 an error means — the compiler enforces it.
 
-The tradeoff this makes is real and is discussed under
-[concurrency](#concurrency-and-nonces): a per-process queue cannot coordinate
-across processes.
+The tradeoff is discussed under [concurrency](#concurrency-and-nonces): a
+per-process queue cannot coordinate across processes.
 
 **Rule this imposes.** `api` and `mcp` translate their own protocol into `core`
 calls and `core` errors into their own vocabulary. Neither contains contract
@@ -97,7 +96,7 @@ sequenceDiagram
     S-->>C: task + hash + block + gas used
 ```
 
-Four rules are enforced here, and they are the ones worth defending:
+Four rules are enforced here:
 
 1. **Validate, then simulate, then send.** A reverted transaction still costs
    gas. Anything knowably doomed is refused before it can spend anything, and
@@ -130,16 +129,14 @@ Two defences, deliberately overlapping:
 - **viem's `nonceManager` on the account**, which derives nonces from the chain
   and hands out sequential ones for concurrent sends.
 
-Verified: three concurrent adds through the REST API produced nonces 31→34 and
-tasks 17, 18 and 19 — no collision, no dropped transaction.
+Verified: three concurrent adds through the REST API took nonces 31, 32 and 33
+and produced tasks 17, 18 and 19 — no collision, no dropped transaction.
 
-**The honest limit.** The mutex is per process. `api` and `mcp` are separate
-processes sharing one wallet, so the mutex does not serialize _between_ them;
-only `nonceManager` does, and it is best-effort. In production the answer is one
-component that owns the key — a broadcaster service, or a signing service of the
-Fireblocks kind — so that "who may send the next transaction" has exactly one
-answer. This project documents the limit rather than pretending the mutex closes
-it.
+**The limit.** The mutex is per process. `api` and `mcp` are separate processes
+sharing one wallet, so it does not serialize _between_ them; only `nonceManager`
+does, and it is best-effort. In production the answer is one component that owns
+the key — a broadcaster service, or a signing service of the Fireblocks kind —
+so that "who may send the next transaction" has exactly one answer.
 
 ## Talking to the network
 
@@ -187,6 +184,15 @@ Everything above the verifier deals in scopes and never in credentials, which is
 what makes replacing the whole left-hand side with a real identity provider a
 contained change. [MCP.md](MCP.md) covers the model in detail.
 
+This applies to the MCP server. **The REST API has no authentication**, which is
+a deliberate scope decision rather than an omission: it is the web client's
+backend, and putting a second, different credential system in front of it would
+be the wrong answer to a question the surrounding deployment normally answers
+already. What guards it instead is a single permitted browser origin and a cap
+of ten writes a minute, so a misconfigured page cannot drain the wallet. It is
+not a service to expose to the internet unchanged — the honest fix is a gateway
+in front of it, not a bespoke scheme inside it.
+
 ## Packaging
 
 Each service ships as its own image, built from one Dockerfile with three
@@ -211,7 +217,7 @@ network — the suite must be runnable offline, on a machine with no funded
 wallet, without cost. Live verification is deliberate and separate:
 `npm run smoke` spends real testnet gas and says so.
 
-## What would change with more time
+## Known gaps and what would close them
 
 - **A transaction broadcaster.** One component owning the key and a durable
   queue, with the services enqueueing intents rather than sending. That fixes
@@ -229,3 +235,8 @@ wallet, without cost. Live verification is deliberate and separate:
 - **Reads from an indexed view.** Every list read is a contract call. At any
   real volume that becomes an indexer and a cache, with the chain as the source
   of truth behind it.
+- **A configurable chain.** The contract address is configuration, but the
+  network is not: `clients.ts` imports Sepolia directly, and the chain id and
+  explorer URLs derive from it. Supporting a second network means threading a
+  chain through that module — small, but code rather than an environment
+  variable, and worth knowing before promising a mainnet deployment.

@@ -34,8 +34,7 @@ between tools reads the description and nothing else. Both writes also accept
 
 ## A real session
 
-Everything below is actual wire traffic against a running server, captured in
-one sitting.
+Everything below is real traffic from a running server.
 
 ### No credential
 
@@ -183,6 +182,15 @@ Anything that is not an explicit accept — a decline, a cancel, a timeout, a
 missing flag — means nothing is sent. The audit entry records the attempt with
 `reason: "awaiting confirmation"`, so a refusal to confirm is visible too.
 
+Be precise about what this guarantees. `confirm` is a normal tool argument, so a
+model that has been told what it does can set it on the first call and never
+reach the elicitation path. The server's guarantee is that no write happens
+without a deliberate confirming step, and that every unconfirmed attempt is
+recorded — not that a human was necessarily the one who took it. Keeping a
+person in the loop is the client's tool-approval prompt, and where that is not
+good enough, the answer is a viewer credential for the assistant and write
+access somewhere a person holds.
+
 ### Every call is audited
 
 One JSONL line per call, written whatever the outcome, to `data/audit.jsonl`:
@@ -228,14 +236,20 @@ sequenceDiagram
     Note over C,AS: on expiry: POST /token with the refresh<br/>token, which is rotated and the old one burned
 ```
 
-| Endpoint                                  | Purpose                             |
-| ----------------------------------------- | ----------------------------------- |
-| `/.well-known/oauth-protected-resource`   | RFC 9728 — what this resource is    |
-| `/.well-known/oauth-authorization-server` | RFC 8414 — where to get a token     |
-| `/register`                               | Dynamic client registration         |
-| `/authorize`                              | Consent page; a role is chosen here |
-| `/token`                                  | Code exchange and refresh           |
-| `/revoke`                                 | Token revocation                    |
+| Endpoint                                  | Purpose                                |
+| ----------------------------------------- | -------------------------------------- |
+| `/.well-known/oauth-protected-resource`   | RFC 9728 — what this resource is       |
+| `/.well-known/oauth-authorization-server` | RFC 8414 — where to get a token        |
+| `/register`                               | Dynamic client registration            |
+| `/authorize`                              | Consent page; a role is chosen here    |
+| `/oauth/consent`                          | The submitted decision; mints the code |
+| `/token`                                  | Code exchange and refresh              |
+| `/revoke`                                 | Token revocation                       |
+
+Every one of those but `/oauth/consent` comes from the SDK. That one is ours,
+because only this service knows what a role means here — and it is the request
+that actually issues an authorization code, which is why it is the endpoint we
+rate-limit ourselves.
 
 What the implementation is careful about:
 
@@ -255,12 +269,10 @@ What the implementation is careful about:
 
 ### What this authorization server does not do
 
-Worth saying plainly, because the gap is deliberate rather than overlooked:
-
 - **It authenticates nobody.** There is no login. Whoever reaches the consent
   page can approve a client and pick a role for it, so the security boundary is
-  "can you reach this page", not "who are you". That is honest for a service on
-  localhost and wrong for anything else — and it is the specific job a real
+  "can you reach this page", not "who are you". That is defensible for a service
+  on localhost and wrong for anything else — and it is the specific job a real
   identity provider does. The verifier seam is where one plugs in.
 - **Consent state and access tokens live in memory.** A restart invalidates
   in-flight authorization requests and forces clients to refresh, which is the
@@ -299,20 +311,20 @@ cannot happen. Comparison is constant-time. A key is shown once, at issue.
 
 ## Multi-tenancy
 
-Not built, and the reason is worth stating: this contract has one global list,
-so there is nothing to partition. The pieces that would be needed are already in
-the right places — a client identity per tenant, scopes carried through the same
+Not built: this contract has one global list, so there is nothing to partition.
+The pieces that would be needed are already in the right places — a client identity per tenant, scopes carried through the same
 verifier, and audit entries already keyed by client. What would change is that
 `TodoService` would take a contract address per tenant instead of one from
 configuration, and the verifier would resolve a tenant alongside the scopes.
 
-## The "go further" items
+## Security and operations at a glance
 
-| Item                             | Status                                                                                  |
-| -------------------------------- | --------------------------------------------------------------------------------------- |
-| Multiple permission tiers        | Done — viewer / operator / admin as scope bundles                                       |
-| Confirmation step before writes  | Done — elicitation, with a `confirm: true` fallback                                     |
-| Logging and observability        | Done — JSONL audit of every call, structured logs                                       |
-| Token expiry and rotation        | Done — 15-minute access tokens, rotating refresh tokens, per-key expiry, revocation CLI |
-| Standards-based auth (OAuth 2.1) | Done — code + PKCE, RFC 9728 metadata, RFC 9207 `iss`, audience validation              |
-| Multi-tenancy                    | Documented above, deliberately not built                                                |
+| Capability              | How it works                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Permission tiers        | Three roles as scope bundles — see [Roles are bundles of scopes](#roles-are-bundles-of-scopes)                                  |
+| Approval before a write | Elicitation where the client supports it, a `confirm: true` argument otherwise — see [above](#confirmation-before-a-write)      |
+| Audit trail             | One JSONL line per call in `data/audit.jsonl` — successes, refusals and errors alike                                            |
+| Credential lifetime     | 15-minute access tokens, refresh rotated on every use, per-key expiry, revocation effective on the next call                    |
+| Standards-based auth    | OAuth 2.1 authorization code with PKCE, RFC 9728 resource metadata, RFC 9207 `iss`, RFC 8707 audience validation                |
+| Rate limiting           | SDK limits on its own OAuth endpoints, 30 a minute on the consent submission, 200 registered clients with oldest-first eviction |
+| Multi-tenancy           | Not implemented — this contract has a single global list; see [Multi-tenancy](#multi-tenancy)                                   |

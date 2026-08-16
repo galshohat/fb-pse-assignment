@@ -78,6 +78,16 @@ export const errorResponse = z
 export const healthResponse = z.object({
   status: z.literal('ok'),
   service: z.literal('api'),
+  chain: z
+    .object({
+      name: z.string().describe('Chain this instance is configured against.'),
+      id: z.number().int().describe('EIP-155 chain id.'),
+      contract: z.string().describe('Address of the TodoList contract being used.'),
+      explorerUrl: z.string().describe('The contract on the block explorer.'),
+    })
+    .describe(
+      'What this instance is pointed at. Clients read it from here rather than being configured separately, so the two cannot disagree about which contract is being shown.',
+    ),
 });
 
 export const taskListResponse = z.array(taskSchema);

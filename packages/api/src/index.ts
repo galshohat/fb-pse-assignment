@@ -25,7 +25,12 @@ function start(): void {
 
   const clients = createChainClients(config.core);
   const service = new TodoService(clients, config.core);
-  const app = createApp({ service, logger, corsOrigin: config.corsOrigin });
+  const app = createApp({
+    service,
+    logger,
+    corsOrigin: config.corsOrigin,
+    contractAddress: config.core.contractAddress,
+  });
 
   const server = app.listen(config.port, () => {
     logger.info(

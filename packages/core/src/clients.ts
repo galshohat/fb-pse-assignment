@@ -52,7 +52,15 @@ export function createChainClients(config: CoreConfig): ChainClients {
   };
 }
 
+/** The chain every service in this workspace talks to. */
+export const CHAIN = { id: sepolia.id, name: sepolia.name } as const;
+
 /** Block explorer link for a transaction, taken from the chain definition. */
 export function explorerTransactionUrl(hash: string): string {
   return `${sepolia.blockExplorers.default.url}/tx/${hash}`;
+}
+
+/** Block explorer link for an address — a contract, or the signing wallet. */
+export function explorerAddressUrl(address: string): string {
+  return `${sepolia.blockExplorers.default.url}/address/${address}`;
 }

@@ -1,4 +1,4 @@
-import type { TodoService } from '@todo/core';
+import { CHAIN, explorerAddressUrl, type TodoService } from '@todo/core';
 import cors from 'cors';
 import express, { type Express, type RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -17,6 +17,8 @@ export interface AppOptions {
   readonly service: TodoService;
   readonly logger: Logger;
   readonly corsOrigin: string;
+  /** Reported on `/health` so clients can show which contract they are seeing. */
+  readonly contractAddress: string;
   /** Disabled in tests, where the limiter would only add flakiness. */
   readonly rateLimit?: boolean;
 }
@@ -31,6 +33,7 @@ export function createApp({
   service,
   logger,
   corsOrigin,
+  contractAddress,
   rateLimit: enableRateLimit = true,
 }: AppOptions): Express {
   const app = express();
@@ -47,8 +50,19 @@ export function createApp({
 
   app.get('/health', (_req, res) => {
     // Liveness only: no RPC call, so a monitor polling this cannot be turned
-    // into traffic against the rate-limited public endpoints.
-    res.json({ status: 'ok', service: 'api' });
+    // into traffic against the rate-limited public endpoints. The chain block
+    // is static configuration, which is the point — a client learns which
+    // contract it is looking at from the service instead of being told twice.
+    res.json({
+      status: 'ok',
+      service: 'api',
+      chain: {
+        name: CHAIN.name,
+        id: CHAIN.id,
+        contract: contractAddress,
+        explorerUrl: explorerAddressUrl(contractAddress),
+      },
+    });
   });
 
   // The machine-readable contract, and a browsable version of it. Swagger UI

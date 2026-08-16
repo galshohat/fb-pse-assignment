@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.js';
 
 const TX_HASH = `0x${'cd'.repeat(32)}` as const;
+const CONTRACT = `0x${'ab'.repeat(20)}` as const;
 
 const writeResult: WriteResult = {
   task: { id: 7, description: 'ship it', completed: false },
@@ -36,6 +37,7 @@ const app = createApp({
   service: service as unknown as TodoService,
   logger: pino({ level: 'silent' }),
   corsOrigin: 'http://localhost:5173',
+  contractAddress: CONTRACT,
   rateLimit: false,
 });
 
@@ -201,9 +203,21 @@ describe('POST /tasks/:id/complete', () => {
 
 describe('service basics', () => {
   it('answers a health check without touching the chain', async () => {
-    await request(app).get('/health').expect(200, { status: 'ok', service: 'api' });
+    const response = await request(app).get('/health').expect(200);
 
+    expect(response.body.status).toBe('ok');
     expect(service.getTasks).not.toHaveBeenCalled();
+  });
+
+  it('reports which contract it is pointed at, so a client need not be told', async () => {
+    const response = await request(app).get('/health').expect(200);
+
+    expect(response.body.chain).toEqual({
+      name: 'Sepolia',
+      id: 11155111,
+      contract: CONTRACT,
+      explorerUrl: `https://sepolia.etherscan.io/address/${CONTRACT}`,
+    });
   });
 
   it('returns a structured 404 for an unknown route', async () => {

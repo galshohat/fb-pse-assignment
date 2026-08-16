@@ -35,6 +35,7 @@ const app = createApp({
   service: service as unknown as TodoService,
   logger: pino({ level: 'silent' }),
   corsOrigin: 'http://localhost:5173',
+  contractAddress: `0x${'ab'.repeat(20)}`,
   rateLimit: false,
 });
 

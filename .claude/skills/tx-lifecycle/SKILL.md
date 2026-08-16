@@ -1,6 +1,6 @@
 ---
 name: tx-lifecycle
-description: How this project sends blockchain transactions — the simulate/send/confirm sequence, serialization of concurrent writes, RPC failover, revert decoding and bigint handling. Use when touching packages/core or any code path that writes to the chain.
+description: How this project sends blockchain transactions — the simulate/send/confirm sequence, serialization of concurrent writes, RPC failover, revert decoding and bigint handling. Use when touching services/core or any code path that writes to the chain.
 ---
 
 # Transaction lifecycle

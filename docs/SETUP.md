@@ -104,8 +104,8 @@ Credentials and the audit trail live on a named volume, so they survive a
 rebuild. The credential CLI runs inside the container:
 
 ```bash
-docker compose exec mcp node packages/mcp/dist/cli.js issue --role operator --label "Claude Code" --days 7
-docker compose exec mcp node packages/mcp/dist/cli.js list
+docker compose exec mcp node services/mcp/dist/cli.js issue --role operator --label "Claude Code" --days 7
+docker compose exec mcp node services/mcp/dist/cli.js list
 ```
 
 ```bash
@@ -297,13 +297,15 @@ otherwise wait out the window or use an API key in the meantime.
 ## Layout
 
 ```
-packages/core   Blockchain logic: contract client, transaction lifecycle, errors
-packages/api    REST API over core
-packages/mcp    MCP server over core, with OAuth 2.1 and scoped API keys
-packages/web    React web client
+services/core   Blockchain logic: contract client, transaction lifecycle, errors
+services/api    REST API over core
+services/mcp    MCP server over core, with OAuth 2.1 and scoped API keys
+services/web    React web client, and the nginx config that serves it
 scripts/        smoke.ts — the live end-to-end check
 docs/           This documentation
 data/           Runtime state: hashed credentials, audit log. Git-ignored
-Dockerfile      One file, three images — one target per service
-docker/         nginx configuration for the web image
 ```
+
+Each service holds its own `Dockerfile`. All three build from the one in
+`services/core`, which compiles the workspace once and is never run itself —
+`docker-compose.yml` wires that up and starts the three that are servers.

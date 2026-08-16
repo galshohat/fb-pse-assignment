@@ -1,6 +1,6 @@
 ---
 name: mcp-auth
-description: The MCP server's access-control model — roles, scopes, the two credential paths (OAuth 2.1 and API keys), how scope is enforced, and audit logging. Use when touching packages/mcp or documenting how the server is secured.
+description: The MCP server's access-control model — roles, scopes, the two credential paths (OAuth 2.1 and API keys), how scope is enforced, and audit logging. Use when touching services/mcp or documenting how the server is secured.
 ---
 
 # MCP access control

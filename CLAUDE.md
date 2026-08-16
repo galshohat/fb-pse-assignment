@@ -6,7 +6,7 @@ correctness at the boundary matters more than feature breadth.
 
 ## Architecture invariant
 
-All blockchain logic lives in `packages/core`. `packages/api` and `packages/mcp` are thin
+All blockchain logic lives in `services/core`. `services/api` and `services/mcp` are thin
 transport layers that translate HTTP or MCP calls into `core` service calls and map
 `core` errors onto their own error shapes. If a change adds contract knowledge, transaction
 handling, or retry logic to `api` or `mcp`, it belongs in `core` instead.

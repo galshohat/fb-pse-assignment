@@ -11,7 +11,7 @@ export default tseslint.config(
   // The rules of hooks are not style: breaking them produces components that
   // work until a re-render order changes. Only the web package has components.
   {
-    files: ['packages/web/**/*.tsx'],
+    files: ['services/web/**/*.tsx'],
     extends: [reactHooks.configs.flat.recommended],
   },
   {

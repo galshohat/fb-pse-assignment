@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: Design and interaction conventions for the web client — visual language, the transaction feedback states, data fetching patterns and accessibility rules. Use when building or changing anything in packages/web.
+description: Design and interaction conventions for the web client — visual language, the transaction feedback states, data fetching patterns and accessibility rules. Use when building or changing anything in services/web.
 ---
 
 # Web client design

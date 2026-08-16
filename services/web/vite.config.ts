@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // Every service in the workspace is configured from the one .env file at the
-  // repository root. Without this, Vite would look only inside packages/web and
+  // repository root. Without this, Vite would look only inside services/web and
   // VITE_API_URL would silently have no effect.
   envDir: '../../',
   server: {

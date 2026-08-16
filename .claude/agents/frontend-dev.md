@@ -1,6 +1,6 @@
 ---
 name: frontend-dev
-description: Builds and changes the React web client in packages/web — components, data fetching, transaction feedback states and styling.
+description: Builds and changes the React web client in services/web — components, data fetching, transaction feedback states and styling.
 tools: Read, Write, Edit, Bash, Grep, Glob, Skill
 ---
 

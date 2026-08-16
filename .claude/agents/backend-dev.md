@@ -1,6 +1,6 @@
 ---
 name: backend-dev
-description: Builds and changes the Node.js/TypeScript services — packages/core, packages/api and packages/mcp. Use for contract interaction, REST endpoints, MCP tools, authentication, and their tests.
+description: Builds and changes the Node.js/TypeScript services — services/core, services/api and services/mcp. Use for contract interaction, REST endpoints, MCP tools, authentication, and their tests.
 tools: Read, Write, Edit, Bash, Grep, Glob, Skill
 ---
 
@@ -11,7 +11,7 @@ guessing at them costs gas or leaks access.
 
 ## What good looks like here
 
-Blockchain logic belongs in `packages/core` and nowhere else; `api` and `mcp` translate
+Blockchain logic belongs in `services/core` and nowhere else; `api` and `mcp` translate
 between a transport and a core call, and map core's typed errors onto their own vocabulary.
 If you find yourself importing viem outside `core`, the design has gone wrong.
 

@@ -6,10 +6,10 @@ How the system is put together, and why.
 
 ```mermaid
 flowchart LR
-    web["Web client<br/>packages/web"] --> api["REST API<br/>packages/api"]
-    ai["AI assistant<br/>Claude Code"] --> mcp["MCP server<br/>packages/mcp"]
+    web["Web client<br/>services/web"] --> api["REST API<br/>services/api"]
+    ai["AI assistant<br/>Claude Code"] --> mcp["MCP server<br/>services/mcp"]
 
-    api --> core["core<br/>packages/core"]
+    api --> core["core<br/>services/core"]
     mcp --> core
 
     core --> rpc{{"Sepolia RPC<br/>four endpoints, in order"}}
@@ -155,10 +155,15 @@ a minute, so a misconfigured page cannot drain the wallet.
 
 ## Packaging
 
-Each service ships as its own image from one Dockerfile with three targets. In a
-workspace monorepo the install and compile steps are identical for every
-service, so sharing them keeps one layer cache warm and avoids the drift three
-copies develop. Each target keeps only its own service — production dependencies
+Each service has its own Dockerfile beside its source, and builds from a shared
+one in `services/core`. That is the only sensible job for a Dockerfile in a
+library that has no entrypoint: it installs the workspace and compiles every
+package once, producing a file bundle the three runnable services copy out of,
+so they cannot end up built from different code and the install does not happen
+three times. Compose builds it first because the others name it as a build
+context; it is declared with zero replicas, so it is never started.
+
+Each service image then keeps only what it runs — production dependencies
 from the lockfile, compiled output, no toolchain, no sources, non-root user —
 and the web client is static files behind nginx. Compose publishes the same
 ports the npm scripts use, so one set of URLs is correct either way, and the MCP

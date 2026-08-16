@@ -8,7 +8,7 @@
     "node": ">=22.9"
   },
   "workspaces": [
-    "packages/*"
+    "services/*"
   ],
   "scripts": {
     "build": "tsc --build && npm run build --workspace @todo/web",

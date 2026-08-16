@@ -29,15 +29,20 @@ all belong in `core`.
 
 ## The contract
 
-`TodoList`, deployed to Sepolia at
+`TodoList`, already deployed to Sepolia at
 [`0xdF52AD4b53a094B97cA4a056d7f51b82E3b795c8`](https://sepolia.etherscan.io/address/0xdF52AD4b53a094B97cA4a056d7f51b82E3b795c8),
-verified, solc 0.8.34:
+with its source published so anyone can read what it does. Three functions:
 
-| Function                | Kind  | Reverts with                                       |
-| ----------------------- | ----- | -------------------------------------------------- |
-| `getTasks()`            | view  | —                                                  |
-| `addTask(string)`       | write | `Description cannot be empty`                      |
-| `completeTask(uint256)` | write | `Task does not exist`, `Task is already completed` |
+| Function                | Costs gas? | Refuses when                                       |
+| ----------------------- | ---------- | -------------------------------------------------- |
+| `getTasks()`            | no         | —                                                  |
+| `addTask(string)`       | yes        | `Description cannot be empty`                      |
+| `completeTask(uint256)` | yes        | `Task does not exist`, `Task is already completed` |
+
+Reading is free because it asks one node a question. Writing costs gas because
+it asks the whole network to agree on a change and keep it forever. When the
+contract refuses, it does so with one of the messages above — and the attempt
+is still charged, which is why we check for those cases ourselves first.
 
 Two of its properties drive everything above it.
 
@@ -52,65 +57,73 @@ task is knowable only after the fact. It is decoded from the `TaskAdded` event
 in the receipt rather than guessed from the list length, which would be wrong
 the moment two writers overlap.
 
-## The lifecycle of a write
+## What happens when you add a task
+
+Four steps, in this order, every time — **check, rehearse, send, wait.**
 
 ```mermaid
 sequenceDiagram
     participant C as Caller
     participant S as TodoService
-    participant Q as Write queue
-    participant N as Sepolia
-    participant X as TodoList
+    participant Q as Write queue<br/>(one write at a time)
+    participant N as Sepolia network
+    participant X as TodoList contract
 
     C->>S: addTask("buy milk")
-    S->>S: validate (non-empty, ≤500 chars)
-    Note over S: a doomed call never reaches the chain:<br/>a revert still costs gas
-    S->>Q: acquire
-    Q->>N: eth_call — simulate
-    N->>X: would this succeed?
-    X-->>N: yes, with this calldata
-    Q->>N: eth_sendRawTransaction
-    N-->>Q: transaction hash
-    Q->>N: wait for receipt (1 confirmation, 120s cap)
-    N-->>Q: receipt, status success
-    Q->>Q: decode TaskAdded → task id
-    Q-->>S: release
+    S->>S: 1. Check it can succeed<br/>(not empty, under 500 characters)
+    Note over S: The network charges for a failed attempt too,<br/>so a request we know will fail stops here, for free.
+    S->>Q: wait for my turn
+    Q->>N: 2. Rehearse it — would this work?
+    N->>X: try it without saving anything
+    X-->>N: yes
+    Q->>N: 3. Send the signed transaction
+    N-->>Q: transaction hash (a tracking number, not a result)
+    Q->>N: 4. Wait for a receipt (up to 120s)
+    N-->>Q: receipt — mined, and it succeeded
+    Q->>Q: read the new task's id out of the receipt
+    Q-->>S: turn finished, next write can start
     S-->>C: task + hash + block + gas used
 ```
 
 Four rules hold on every write, from either service:
 
-1. **Validate, then simulate, then send.** A reverted transaction still costs
-   gas, so anything knowably doomed is refused before it can spend anything and
-   `simulateContract` catches the rest, including races the caller could not
-   have known about.
-2. **A hash is not a result.** The call returns only after a receipt with
-   `status: 'success'`.
-3. **Never lose a hash.** If the receipt does not arrive inside the timeout the
-   transaction may still be mined, so `TransactionTimeoutError` carries the hash
-   and the transports surface it — HTTP `202`, a sticky notice in the UI.
-4. **The id comes from the event**, so it is the id the chain assigned.
+1. **Check, then rehearse, then send.** A failed transaction is still charged
+   for, so anything we can already tell will fail is refused here for nothing.
+   The rehearsal (`simulateContract`) catches the rest — including a task
+   someone else completed a second ago, which the caller had no way to know.
+2. **A hash is not a result.** Sending gets you a tracking number immediately;
+   the network can still reject the transaction afterwards. The call returns
+   only once a receipt confirms it actually succeeded.
+3. **Never lose a hash.** If no receipt arrives within the timeout the
+   transaction may still go through later, so the hash is handed back rather
+   than thrown away — as HTTP `202`, and as a notice in the UI that does not
+   disappear on its own.
+4. **The new id comes from the receipt**, so it is the id the contract really
+   assigned rather than one we guessed.
 
-## Concurrency and nonces
+## Why writes take turns
 
-Every transaction from one wallet carries a sequential nonce, and two built at
-the same time collide: the network keeps one and drops the other. With one
-shared signing wallet and two services that write, that is the default outcome
-of concurrent use, not a corner case. Two overlapping defences:
+Every transaction from a wallet is numbered in order — its **nonce**. The
+network expects those numbers to arrive in sequence, so if two transactions are
+built at the same moment they both claim the same number, and one of them is
+simply discarded. With one signing wallet and two services that write, that is
+what normally happens under concurrent use, not a rare accident.
 
-- **A mutex around the whole simulate → send → wait block** (`async-mutex`, in
-  `TodoService`), so the second write simulates against the state the first
-  produced — which is also what makes "already completed" correct rather than
-  racy.
-- **viem's `nonceManager`**, deriving nonces from the chain for concurrent
-  sends.
+Two overlapping protections:
 
-Verified: three concurrent adds through the REST API took nonces 31, 32 and 33
-and produced tasks 17, 18 and 19 — no collision, no dropped transaction.
+- **The write queue.** One write at a time, holding its place from the
+  rehearsal all the way through to the receipt. The next write therefore
+  rehearses against a world where the previous one already happened, which is
+  also what makes "already completed" a reliable answer instead of a coin flip.
+- **viem's `nonceManager`**, which reads the next free number from the chain
+  rather than assuming one.
 
-The mutex is per process, so it serializes writes within a service but not
-between `api` and `mcp`, which share the wallet; between them only
-`nonceManager` applies.
+Verified: three simultaneous adds through the REST API took numbers 31, 32 and
+33 and produced tasks 17, 18 and 19 — none collided, none was dropped.
+
+The queue lives inside one process, so it orders writes within a service but
+not between `api` and `mcp`, which share the wallet. Across those two, only
+`nonceManager` is doing the work.
 
 ## Talking to the network
 

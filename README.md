@@ -104,3 +104,7 @@ documents each variable, and [SETUP.md](docs/SETUP.md#configuration) has the ful
 | [MCP.md](docs/MCP.md)                           | **Using it from an AI assistant** — the tools, the access-control model, and the tradeoffs behind it                 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)         | **Maintaining it** — how the parts fit, why they were built that way, and the known gaps                             |
 | [FOR-STAKEHOLDERS.md](docs/FOR-STAKEHOLDERS.md) | **For a non-technical reader** — what the assistant integration is for and what stands between it and spending money |
+
+Each service also has a short README of its own, next to its code:
+[core](services/core/README.md) · [api](services/api/README.md) ·
+[mcp](services/mcp/README.md) · [web](services/web/README.md).

@@ -43,10 +43,10 @@ Both credential types converge on one function,
 
 ```mermaid
 flowchart LR
-    oauth["OAuth 2.1 token<br/>browser flow + PKCE"] --> v
+    oauth["OAuth token<br/>from the browser flow"] --> v
     key["API key<br/>todo_key_…"] --> v
-    v["verifyAccessToken"] --> info["AuthInfo<br/>clientId · scopes · expiresAt"]
-    info --> guard["Every tool handler:<br/>scope check, then audit"]
+    v["verifyAccessToken<br/>the one place a credential<br/>becomes an identity"] --> info["who is calling<br/>what they may do<br/>when it expires"]
+    info --> guard["Every tool:<br/>check permission,<br/>then record the call"]
 ```
 
 Everything above that function deals in scopes and never in credentials, which
@@ -144,20 +144,21 @@ refresh-token rotation.
 sequenceDiagram
     participant C as MCP client
     participant AS as Authorization server
-    participant U as User (browser)
-    participant RS as MCP resource
+    participant U as A person, in a browser
+    participant RS as MCP server
 
-    C->>RS: tools/call without a token
-    RS-->>C: 401 + resource_metadata URL
-    C->>AS: GET metadata, POST /register
-    C->>U: open /authorize?…&code_challenge=S256(v)
-    U->>AS: consent — approve, and choose a role
-    AS-->>C: redirect with code + iss
-    C->>AS: POST /token — code + code_verifier
+    C->>RS: calls a tool, with no credential
+    RS-->>C: 401 — and where to go to get one
+    C->>AS: reads that, and registers itself
+    Note over C,AS: The client invents a one-time secret and sends<br/>only its fingerprint. An intercepted code is then<br/>useless to anyone who lacks the original.
+    C->>U: opens the consent page
+    U->>AS: approves, and picks viewer or operator
+    AS-->>C: a short-lived code, and who issued it
+    C->>AS: trades the code in, proving the secret
     AS-->>C: access token (15 min) + refresh token
-    C->>RS: tools/call with Bearer token
+    C->>RS: calls the tool again, with the token
     RS-->>C: result
-    Note over C,AS: on expiry: POST /token with the refresh<br/>token, which is rotated and the old one burned
+    Note over C,AS: When it expires the refresh token buys a new<br/>one — and is itself replaced every time.
 ```
 
 | Endpoint                                  | Purpose                                |
@@ -176,18 +177,20 @@ mints a code, it is the one we rate-limit ourselves.
 
 What the flow enforces:
 
-- **PKCE is mandatory** — `code_challenge_methods_supported` is `["S256"]` only,
-  so an intercepted code is useless without the verifier.
-- **Refresh tokens rotate.** Each use burns the old one; presenting a spent
-  token ends the whole session, on the basis that a replay means it was copied.
-- **Access tokens last 15 minutes**, so a leaked one stops working on its own.
-- **`iss` is returned** (RFC 9207), identical to the advertised issuer, so a
-  client cannot be misled about which server answered.
-- **The redirect URI is re-checked at consent** against what the client
-  registered, not against what the form submitted — and the form is signed, so
-  it cannot be forged.
-- **The audience is validated** (RFC 8707): a token minted for another resource
-  is refused here.
+- **The one-time secret is mandatory** (PKCE, RFC 7636). The client commits to a
+  secret up front by sending its fingerprint, and must produce the secret itself
+  to redeem the code. Stealing the code alone gets an attacker nothing.
+- **Refresh tokens are replaced on every use.** Using one invalidates it. If a
+  spent one is ever presented again, that means somebody kept a copy, so the
+  entire session is revoked rather than just that request.
+- **Access tokens last 15 minutes**, so a leaked one expires on its own.
+- **The response says who issued it** (RFC 9207), matching the published issuer
+  exactly, so a client cannot be fooled about which server answered.
+- **The return address is re-checked** against what the client registered, not
+  against what the submitted form claims — the form came back through a browser,
+  so it is treated as hostile input. It is also signed and cannot be forged.
+- **Tokens are bound to this server** (RFC 8707). One minted for a different
+  service is refused here, even if this server issued it.
 
 Two operational notes. There is no login: whoever can reach the consent page can
 approve a client, so the boundary is network reach, and an external identity
@@ -212,12 +215,15 @@ otherwise pushes people into sharing interactive credentials:
 | Setup               | Automatic from a 401                     | One CLI command                           |
 | Revocation          | Revoke the token or the client           | `keys revoke <id>`, effective immediately |
 
-Both are hashed at rest, carry scopes and an expiry, resolve to the same
-`AuthInfo`, and are audited identically — the choice is about the caller, not
-about how much security you want. Keys are stored as SHA-256 hashes and compared
-in constant time; a key is high-entropy and randomly generated, so a slow KDF
-would buy nothing against a guessing attack that cannot happen. A key is shown
-once, at issue.
+Both are hashed before storage, carry the same permissions and expiry, and are
+audited identically — the choice is about the caller, not about how much
+security you want.
+
+A key is stored only as a SHA-256 hash, and the comparison takes the same amount
+of time whether it matches or not, so an attacker cannot narrow it down by
+measuring how quickly they are rejected. The slower hashing used for passwords
+buys nothing here: a password is short and guessable, whereas these keys are 32
+random bytes, which is not guessable at any speed. Each is shown once, at issue.
 
 ## At a glance
 

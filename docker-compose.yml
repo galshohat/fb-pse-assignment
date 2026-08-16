@@ -1,0 +1,62 @@
+# Starts the whole system: REST API, MCP server, and the web client.
+#
+#   docker compose up --build
+#
+# Requires a `.env` at the repository root — the same one the npm scripts read.
+# Copy .env.example and set WALLET_PRIVATE_KEY first.
+#
+# The published ports match the ports the npm scripts use, so every URL in the
+# documentation is correct either way, and CORS_ORIGIN needs no second value.
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    env_file: .env
+    ports:
+      - '3000:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/health']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: .
+      target: mcp
+    env_file: .env
+    environment:
+      # Overrides whatever the host .env says: inside the container the data
+      # directory is a volume, so credentials and the audit trail survive a
+      # rebuild instead of vanishing with the container's filesystem.
+      MCP_DATA_DIR: /data
+    volumes:
+      - mcp-data:/data
+    ports:
+      - '3001:3001'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3001/health']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - '5173:80'
+    # The browser calls the API directly on the host, so this only orders
+    # startup — the client handles an API that is not answering yet.
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  mcp-data:

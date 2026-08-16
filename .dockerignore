@@ -1,0 +1,28 @@
+# The build happens inside the image, so nothing built or installed on the host
+# should be copied in — a host node_modules would carry the host's platform
+# binaries into a Linux container.
+# Patterns are matched from the context root, so nested copies need `**/`.
+# A stale tsbuildinfo copied in is not a harmless extra file: tsc --build reads
+# it, concludes the output is current, and emits nothing at all.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+coverage
+**/coverage
+
+# Secrets and runtime state reach the containers through compose, never a layer.
+.env
+.env.*
+data
+
+# Not needed to build or run anything.
+.git
+.github
+docs
+*.pdf
+*.docx
+*.md
+!README.md

@@ -76,9 +76,13 @@ export class TransactionRevertedError extends TodoError {
 }
 
 /**
- * The transaction was accepted by the network but no receipt arrived in time.
- * It is in flight, not failed — the hash is carried so the caller can keep
- * tracking it rather than losing the transaction entirely.
+ * The transaction was accepted by the network but its outcome is not known
+ * here: either no receipt arrived within the budget, or the wait itself failed
+ * — an RPC endpoint dropped, say. Both mean the same thing to a caller. It is
+ * in flight, not failed, and the hash is carried so the transaction can still
+ * be tracked rather than lost.
+ *
+ * `timeoutMs` is 0 when the wait ended for a reason other than the budget.
  */
 export class TransactionTimeoutError extends TodoError {
   readonly code = 'TRANSACTION_TIMEOUT';
@@ -88,7 +92,9 @@ export class TransactionTimeoutError extends TodoError {
     readonly timeoutMs: number,
   ) {
     super(
-      `Transaction ${transactionHash} was submitted but not confirmed within ${timeoutMs}ms; it may still be mined`,
+      timeoutMs > 0
+        ? `Transaction ${transactionHash} was submitted but not confirmed within ${timeoutMs}ms; it may still be mined`
+        : `Transaction ${transactionHash} was submitted but confirmation could not be checked; it may still be mined`,
     );
   }
 }
@@ -149,10 +155,28 @@ export function mapChainError(error: unknown, context: ChainErrorContext = {}): 
         ? new TransactionTimeoutError(context.transactionHash, context.timeoutMs ?? 0)
         : new UnexpectedChainError({ cause: error });
     }
+  }
 
-    if (error.walk((e) => e instanceof HttpRequestError || e instanceof TimeoutError)) {
-      return new ChainUnavailableError({ cause: error });
-    }
+  /**
+   * Past this point the error is not a revert, so if a hash exists the
+   * transaction is on the network and its outcome is simply unknown to us —
+   * the receipt wait died with it in flight, which public RPC endpoints cause
+   * routinely by rate-limiting mid-poll.
+   *
+   * Reporting that as "the chain is unavailable, retry" would be two lies at
+   * once: it drops the only handle on a live transaction, and it invites a
+   * retry that spends gas a second time. Unconfirmed-with-a-hash is the honest
+   * answer, and it is the one every transport already knows how to present.
+   */
+  if (context.transactionHash) {
+    return new TransactionTimeoutError(context.transactionHash, 0);
+  }
+
+  if (
+    error instanceof BaseError &&
+    error.walk((e) => e instanceof HttpRequestError || e instanceof TimeoutError)
+  ) {
+    return new ChainUnavailableError({ cause: error });
   }
 
   return new UnexpectedChainError({ cause: error });

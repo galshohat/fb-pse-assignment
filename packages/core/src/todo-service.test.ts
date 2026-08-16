@@ -308,7 +308,33 @@ describe('write serialization', () => {
       .mockRejectedValueOnce(wrapError(new HttpRequestError({ url: 'https://rpc.example' })))
       .mockResolvedValue(successReceipt([taskAddedLog(5n, 'second')]));
 
-    await expect(service.addTask('first')).rejects.toBeInstanceOf(ChainUnavailableError);
+    await expect(service.addTask('first')).rejects.toBeInstanceOf(TransactionTimeoutError);
     await expect(service.addTask('second')).resolves.toMatchObject({ task: { id: 5 } });
+  });
+
+  it('keeps the hash when the receipt wait dies rather than times out', async () => {
+    const { service, publicClient } = createService();
+
+    // The transaction is broadcast, then every RPC endpoint rate-limits during
+    // the receipt poll — routine on public Sepolia. The transaction is live.
+    publicClient.waitForTransactionReceipt.mockRejectedValue(
+      wrapError(new HttpRequestError({ url: 'https://rpc.example' })),
+    );
+
+    const failure = await service.addTask('in flight').catch((error: unknown) => error);
+
+    // Reporting CHAIN_UNAVAILABLE here would lose the hash and invite a retry
+    // that adds the task twice, paying gas twice.
+    expect(failure).toBeInstanceOf(TransactionTimeoutError);
+    expect((failure as TransactionTimeoutError).transactionHash).toBe(TX_HASH);
+  });
+
+  it('still reports an unreachable chain for a read, where no hash exists', async () => {
+    const { service, publicClient } = createService();
+    publicClient.readContract.mockRejectedValue(
+      wrapError(new HttpRequestError({ url: 'https://rpc.example' })),
+    );
+
+    await expect(service.getTasks()).rejects.toBeInstanceOf(ChainUnavailableError);
   });
 });

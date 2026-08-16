@@ -48,9 +48,16 @@ export interface WriteResult {
  * claim the same nonce, and the second would be rejected.
  *
  * Holding the lock through confirmation rather than releasing it after the
- * send costs throughput (a write takes as long as a block) but also prevents
- * two callers from paying gas to complete the same task, since each simulation
+ * send costs throughput (a write takes as long as a block) but also keeps two
+ * callers from paying gas to complete the same task, since each simulation
  * sees the previous transaction's effects.
+ *
+ * That last guarantee has one gap worth naming: if a wait ends without a
+ * receipt, the lock is released with the transaction still in flight, so a
+ * retry can simulate against state it has not yet changed and spend gas on a
+ * write that later reverts. The caller is told the first write is unconfirmed
+ * and holds its hash, which is the honest position — the alternative is
+ * holding the wallet lock indefinitely on a transaction that may never mine.
  */
 export class TodoService {
   private readonly writeQueue = new Mutex();
@@ -100,7 +107,14 @@ export class TodoService {
     const [event] = parseEventLogs({
       abi: todoListAbi,
       eventName: 'TaskAdded',
-      logs: receipt.logs,
+      // Filtered to our own contract. The deployed TodoList makes no external
+      // calls, so today its receipt can only contain its own logs — but the
+      // address is configurable, and against a contract that did call out, any
+      // `TaskAdded(uint256,string)` from any emitter would match and the first
+      // one would win. A wrong id would then be reported as fact.
+      logs: receipt.logs.filter(
+        (log) => log.address.toLowerCase() === this.config.contractAddress.toLowerCase(),
+      ),
     });
 
     if (!event) {

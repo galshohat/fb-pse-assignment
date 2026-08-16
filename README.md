@@ -33,6 +33,10 @@ npm run dev:mcp          # MCP server    → http://localhost:3001
 npm run dev:web          # Web client    → http://localhost:5173
 ```
 
+The API documents itself: browse and try the endpoints at
+[localhost:3000/docs](http://localhost:3000/docs), or fetch the OpenAPI document from
+`/openapi.json`.
+
 ## Configuration
 
 All services read the single `.env` file at the repository root. `.env.example` documents

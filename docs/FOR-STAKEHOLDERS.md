@@ -1,4 +1,4 @@
-# What this is, without the jargon
+# What we built
 
 A shared to-do list that lives on a blockchain, and three ways to use it: a web
 page, a programming interface, and an AI assistant you can talk to. No
@@ -38,14 +38,13 @@ Six checks stand between "the assistant decided to do something" and "money was
 spent".
 
 ```mermaid
-flowchart TB
-    A["1 · Who is this?<br/>A valid, unexpired credential"] --> B
-    B["2 · Are they allowed?<br/>Reading and changing are separate permissions"] --> C
-    C["3 · Does the request make sense?<br/>Checked before anything is spent"] --> D
-    D["4 · Has it been confirmed?<br/>A second, explicit go-ahead for every change"] --> E
-    E["5 · Would it actually work?<br/>Rehearsed against the network first"] --> F
-    F["6 · Did it really happen?<br/>Reported only once the network confirms"] --> G
-    G["Recorded in the audit log<br/>— including everything that was refused"]
+flowchart LR
+    A["1<br/>Who is<br/>this?"] --> B["2<br/>Are they<br/>allowed?"]
+    B --> C["3<br/>Does it make<br/>sense?"]
+    C --> D["4<br/>Confirmed?"]
+    D --> E["5<br/>Would it<br/>work?"]
+    E --> F["6<br/>Did it<br/>happen?"]
+    F --> G(["Audit log —<br/>refusals included"])
 ```
 
 **Who is this?** Every request carries a credential the server checks itself.

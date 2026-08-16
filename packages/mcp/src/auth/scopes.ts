@@ -10,8 +10,6 @@ export const SCOPES = {
   read: 'tasks:read',
   /** Add and complete tasks. Every use spends gas and is irreversible. */
   write: 'tasks:write',
-  /** Manage credentials. Not needed to use the to-do list itself. */
-  admin: 'tasks:admin',
 } as const;
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
@@ -19,7 +17,6 @@ export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
 export const ROLES = {
   viewer: [SCOPES.read],
   operator: [SCOPES.read, SCOPES.write],
-  admin: [SCOPES.read, SCOPES.write, SCOPES.admin],
 } as const satisfies Record<string, readonly Scope[]>;
 
 export type Role = keyof typeof ROLES;

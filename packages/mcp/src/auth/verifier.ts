@@ -1,5 +1,5 @@
 import { OAuthError, OAuthErrorCode, type AuthInfo } from '@modelcontextprotocol/server';
-import { scopesForRole, type Role } from './scopes.js';
+import { isRole, scopesForRole, type Role } from './scopes.js';
 import type { CredentialStore } from './store.js';
 
 /** Prefixes make a credential recognisable in a log or a support ticket. */
@@ -101,6 +101,12 @@ export class CredentialVerifier {
 
     const expiresAt = new Date(record.expiresAt);
     if (expiresAt <= new Date()) throw invalidToken();
+
+    // The role is typed but comes off disk, so a file written by an older
+    // build can name a role that no longer exists. Refusing is the only safe
+    // reading — the scopes it once meant are not ours to guess — and it has to
+    // happen here, because looking up the scopes of an unknown role throws.
+    if (!isRole(record.role)) throw invalidToken();
 
     return {
       token,

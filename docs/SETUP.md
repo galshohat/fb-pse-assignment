@@ -178,9 +178,8 @@ blockchain-todo: http://localhost:3001/mcp (HTTP) - ! Needs authentication
 That is the flow working, not failing. The server answered with a `401` and a
 pointer to its metadata; the client read it and knows it must authenticate.
 Running `/mcp` inside Claude Code opens the browser, where you approve the
-connection and choose a role: **viewer** to look, **operator** to spend gas, or
-**admin** to also manage credentials. The token that comes back lasts 15
-minutes and is refreshed silently.
+connection and choose a role — **viewer** to look, **operator** to spend gas.
+The token that comes back lasts 15 minutes and is refreshed silently.
 
 ### Other MCP clients
 

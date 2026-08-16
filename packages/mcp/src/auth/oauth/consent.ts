@@ -129,7 +129,6 @@ function roleOption(role: Role): string {
   const summary: Record<Role, string> = {
     viewer: 'Read the task list only. Cannot spend anything.',
     operator: 'Read the list, and add and complete tasks. Spends gas.',
-    admin: 'Everything an operator can do, plus credential management.',
   };
 
   return `<label class="role">

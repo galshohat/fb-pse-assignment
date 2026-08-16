@@ -13,11 +13,13 @@ every request is authenticated and every write is scope-checked.
 Two scopes: `tasks:read` (getTasks) and `tasks:write` (addTask, completeTask). Roles are named
 bundles of scopes, not a separate concept:
 
-| Role       | Scopes                                     |
-| ---------- | ------------------------------------------ |
-| `viewer`   | `tasks:read`                               |
-| `operator` | `tasks:read`, `tasks:write`                |
-| `admin`    | `tasks:read`, `tasks:write`, `tasks:admin` |
+| Role       | Scopes                      |
+| ---------- | --------------------------- |
+| `viewer`   | `tasks:read`                |
+| `operator` | `tasks:read`, `tasks:write` |
+
+Add a role only when a tool enforces a scope it grants. A role that resolves to no enforced
+scope tells a caller they have a capability the server will not honour.
 
 ## Two credential paths, one verifier
 

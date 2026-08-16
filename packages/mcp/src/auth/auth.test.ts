@@ -13,7 +13,7 @@ function temporaryStore(): CredentialStore {
 
 function issueKey(
   store: CredentialStore,
-  overrides: Partial<{ role: 'viewer' | 'operator' | 'admin'; expiresAt: string; id: string }> = {},
+  overrides: Partial<{ role: 'viewer' | 'operator'; expiresAt: string; id: string }> = {},
 ): string {
   const secret = generateSecret(API_KEY_PREFIX);
 
@@ -35,16 +35,16 @@ describe('scopes and roles', () => {
     expect(hasScope(scopesForRole('viewer'), SCOPES.write)).toBe(false);
   });
 
-  it('grants both to an operator, and admin strictly more', () => {
-    expect(hasScope(scopesForRole('operator'), SCOPES.write)).toBe(true);
-    expect(scopesForRole('admin')).toEqual(
-      expect.arrayContaining([SCOPES.read, SCOPES.write, SCOPES.admin]),
-    );
+  it('grants an operator both read and write', () => {
+    expect(scopesForRole('operator')).toEqual([SCOPES.read, SCOPES.write]);
   });
 
   it('rejects role names that are not roles', () => {
     expect(isRole('operator')).toBe(true);
     expect(isRole('superuser')).toBe(false);
+    // Removed rather than renamed, so a credential file or consent form still
+    // naming it is refused instead of quietly resolving to something else.
+    expect(isRole('admin')).toBe(false);
   });
 
   it.each(['__proto__', 'toString', 'constructor', 'hasOwnProperty'])(
@@ -227,6 +227,27 @@ describe('credential verification', () => {
     store.revokeApiKey('doomed');
 
     await expect(verifier.verifyAccessToken(secret)).rejects.toThrow();
+  });
+
+  it('refuses a key naming a role that no longer exists, rather than crashing', async () => {
+    // What a credential file written by an older build looks like. The role is
+    // typed, so only a runtime check stands between this and a 500: looking up
+    // the scopes of an unknown role throws inside the verifier.
+    const secret = generateSecret(API_KEY_PREFIX);
+    store.addApiKey({
+      id: 'legacy',
+      label: 'issued before the role was removed',
+      hash: hashSecret(secret),
+      role: 'admin' as never,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    // The same message every other rejection gives, so a stale credential is
+    // not distinguishable from an unknown one.
+    await expect(verifier.verifyAccessToken(secret)).rejects.toThrow(
+      /missing, expired, revoked or not recognised/i,
+    );
   });
 
   it('gives the same message however a credential fails, so nothing is probeable', async () => {

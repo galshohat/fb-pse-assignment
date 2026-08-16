@@ -26,14 +26,16 @@ take `confirm: boolean` — see [confirmation](#confirmation-before-a-write).
 
 ## Roles and scopes
 
-| Role       | Scopes                                     | For                              |
-| ---------- | ------------------------------------------ | -------------------------------- |
-| `viewer`   | `tasks:read`                               | Anything that only needs to look |
-| `operator` | `tasks:read`, `tasks:write`                | Assistants that act              |
-| `admin`    | `tasks:read`, `tasks:write`, `tasks:admin` | Managing credentials             |
+| Role       | Scopes                      | For                              |
+| ---------- | --------------------------- | -------------------------------- |
+| `viewer`   | `tasks:read`                | Anything that only needs to look |
+| `operator` | `tasks:read`, `tasks:write` | Assistants that act              |
 
 Every authorization decision is a scope check; roles are only named bundles, so
-adding one never means touching a tool.
+adding one never means touching a tool. There are two because there are two
+things a caller can do here — read the list, or spend money changing it.
+Credential management is not a third, since it happens through a local CLI
+rather than over HTTP.
 
 Both credential types converge on one function,
 `CredentialVerifier.verifyAccessToken`, which turns a credential into an
@@ -226,7 +228,7 @@ read-only access, or be revoked from one caller without disrupting the rest.
 
 | Capability              | How it works                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Permission tiers        | Three roles as scope bundles — viewer, operator, admin                                                                          |
+| Permission tiers        | Separate read and write scopes, bundled as viewer and operator roles                                                            |
 | Approval before a write | Elicitation where supported, a `confirm: true` argument otherwise                                                               |
 | Audit trail             | One JSONL line per call — successes, refusals and errors alike                                                                  |
 | Credential lifetime     | 15-minute access tokens, refresh rotated on every use, per-key expiry, revocation effective on the next call                    |

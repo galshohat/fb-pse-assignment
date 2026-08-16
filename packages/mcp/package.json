@@ -1,0 +1,30 @@
+{
+  "name": "@todo/mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authenticated MCP server exposing the TodoList contract as typed tools",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "node --env-file-if-exists=../../.env ../../node_modules/.bin/tsx watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "keys": "node --env-file-if-exists=../../.env ../../node_modules/.bin/tsx src/cli.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/express": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server-legacy": "^2.0.0",
+    "@todo/core": "1.0.0",
+    "express": "^5.2.1",
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2"
+  }
+}

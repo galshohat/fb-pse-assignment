@@ -3,5 +3,5 @@
   // Solution-style root config: it holds no sources of its own and simply
   // points `tsc --build` at every package in the workspace.
   "files": [],
-  "references": [{ "path": "./packages/core" }, { "path": "./packages/api" }]
+  "references": [{ "path": "./packages/core" }, { "path": "./packages/api" }, { "path": "./packages/mcp" }]
 }

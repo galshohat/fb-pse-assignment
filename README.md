@@ -76,12 +76,12 @@ All services read the single `.env` file at the repository root. Only
 `WALLET_PRIVATE_KEY` has no usable default — everything else works as shipped. `.env.example`
 documents each variable, and [SETUP.md](docs/SETUP.md#configuration) has the full table.
 
-## Documentation
+## Client-facing documentation
 
-| Document                                        | Audience                                      |
-| ----------------------------------------------- | --------------------------------------------- |
-| [SETUP.md](docs/SETUP.md)                       | Setting up and running everything             |
-| [API.md](docs/API.md)                           | REST endpoint reference                       |
-| [MCP.md](docs/MCP.md)                           | MCP tools, authentication, access control     |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md)         | How it works and why it is built this way     |
-| [FOR-STAKEHOLDERS.md](docs/FOR-STAKEHOLDERS.md) | Plain-language overview, no blockchain needed |
+| Document                                        | What it covers                                                                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| [SETUP.md](docs/SETUP.md)                       | **Setting up and running** the application, including the MCP server, and what to do when it misbehaves              |
+| [API.md](docs/API.md)                           | **Using the REST API** — every endpoint with worked examples, and the full error catalogue                           |
+| [MCP.md](docs/MCP.md)                           | **Using it from an AI assistant** — the tools, the access-control model, and the tradeoffs behind it                 |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)         | **Maintaining it** — how the parts fit, why they were built that way, and the known gaps                             |
+| [FOR-STAKEHOLDERS.md](docs/FOR-STAKEHOLDERS.md) | **For a non-technical reader** — what the assistant integration is for and what stands between it and spending money |

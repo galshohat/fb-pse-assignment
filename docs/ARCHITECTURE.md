@@ -170,19 +170,13 @@ its job — the contract declined. A timeout is `202`, not an error at all.
 
 ## Authentication
 
-Two ways in, one place where a credential becomes an identity:
-
-```mermaid
-flowchart LR
-    oauth["OAuth 2.1 access token<br/>(browser flow, PKCE)"] --> verifier
-    key["Scoped API key<br/>(scripts, CI)"] --> verifier
-    verifier["CredentialVerifier<br/>verifyAccessToken"] --> auth["AuthInfo<br/>clientId · scopes · expiresAt"]
-    auth --> tools["Tool handlers<br/>scope check + audit"]
-```
-
-Everything above the verifier deals in scopes and never in credentials, which is
-what makes replacing the whole left-hand side with a real identity provider a
-contained change. [MCP.md](MCP.md) covers the model in detail.
+The MCP server takes two kinds of credential — an OAuth 2.1 access token or a
+scoped API key — and both become an identity in one function,
+`CredentialVerifier.verifyAccessToken`. Everything above it deals in scopes and
+never in credentials, which is what makes replacing the whole left-hand side
+with a real identity provider a contained change.
+[MCP.md](MCP.md#two-ways-in-one-place-they-converge) has the diagram and the
+model in detail.
 
 This applies to the MCP server. **The REST API has no authentication**, which is
 a deliberate scope decision rather than an omission: it is the web client's

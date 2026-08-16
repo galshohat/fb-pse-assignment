@@ -319,6 +319,13 @@ configuration, and the verifier would resolve a tenant alongside the scopes.
 
 ## Security and operations at a glance
 
+All of it follows from one fact: this server spends money that cannot be
+recovered, on the instruction of something that is not a person. A single shared
+password would have been enough to stop it being open to the world — but it
+would not tell you who spent what, would not let you hand someone read-only
+access, and could not be taken away from one caller without disrupting every
+other. Each row below exists to answer one of those.
+
 | Capability              | How it works                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Permission tiers        | Three roles as scope bundles — see [Roles are bundles of scopes](#roles-are-bundles-of-scopes)                                  |

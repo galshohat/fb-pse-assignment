@@ -1,0 +1,24 @@
+{
+  "name": "@todo/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Blockchain logic for the TODO list: contract client, transaction lifecycle and typed errors",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "async-mutex": "^0.5.0",
+    "viem": "^2.55.16",
+    "zod": "^4.4.3"
+  }
+}

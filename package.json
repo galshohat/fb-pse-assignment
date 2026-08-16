@@ -19,7 +19,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify": "npm run typecheck && npm run lint && npm run test",
-    "clean": "tsc --build --clean"
+    "clean": "tsc --build --clean",
+    "smoke": "npm run build && node --env-file-if-exists=.env node_modules/.bin/tsx scripts/smoke.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

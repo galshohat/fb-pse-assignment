@@ -15,3 +15,5 @@ export {
   mapChainError,
 } from './errors.js';
 export type { TodoErrorCode, ChainErrorContext } from './errors.js';
+export { TodoService, MAX_DESCRIPTION_LENGTH } from './todo-service.js';
+export type { Task, TransactionInfo, WriteResult } from './todo-service.js';

@@ -3,6 +3,15 @@ import { isTodoError, MAX_DESCRIPTION_LENGTH, type TodoService } from '@todo/cor
 import { z } from 'zod';
 import type { AuditLog, AuditOutcome } from './audit.js';
 import { describeMissingScope, hasScope, SCOPES, type Scope } from './auth/scopes.js';
+import { confirmWrite, type RequestContext } from './confirmation.js';
+
+/** Present on every write tool: the universal way to approve an action. */
+const confirmArgument = z
+  .boolean()
+  .optional()
+  .describe(
+    'Set to true to approve sending the transaction. Omit it to be asked for confirmation first.',
+  );
 
 export interface ToolContext {
   readonly service: TodoService;
@@ -91,10 +100,14 @@ function registerAddTask(server: McpServer, context: ToolContext, canWrite: bool
           .min(1)
           .max(MAX_DESCRIPTION_LENGTH)
           .describe('What the task says. Must not be empty.'),
+        confirm: confirmArgument,
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    guard(context, 'addTask', SCOPES.write, async ({ description }) => {
+    guard(context, 'addTask', SCOPES.write, async ({ description, confirm }, ctx) => {
+      const approval = await confirmWrite(ctx, confirm, `Add the task "${description}".`);
+      if (!approval.confirmed) return { unconfirmed: approval.reason };
+
       const { task, transaction } = await context.service.addTask(description);
 
       return {
@@ -121,6 +134,7 @@ function registerCompleteTask(server: McpServer, context: ToolContext, canWrite:
           .int()
           .min(0)
           .describe('The id of the task to complete, as shown by getTasks. Ids start at 0.'),
+        confirm: confirmArgument,
       }),
       annotations: {
         readOnlyHint: false,
@@ -129,7 +143,10 @@ function registerCompleteTask(server: McpServer, context: ToolContext, canWrite:
         openWorldHint: true,
       },
     },
-    guard(context, 'completeTask', SCOPES.write, async ({ taskId }) => {
+    guard(context, 'completeTask', SCOPES.write, async ({ taskId, confirm }, ctx) => {
+      const approval = await confirmWrite(ctx, confirm, `Mark task #${taskId} as completed.`);
+      if (!approval.confirmed) return { unconfirmed: approval.reason };
+
       const { task, transaction } = await context.service.completeTask(taskId);
 
       return {
@@ -142,10 +159,14 @@ function registerCompleteTask(server: McpServer, context: ToolContext, canWrite:
   );
 }
 
-interface HandlerOutcome {
-  readonly result: ToolResult;
-  readonly transactionHash?: string;
-}
+/**
+ * A handler either did the work, or stopped because the caller has not
+ * approved it yet. The second case is not a failure and must not read like
+ * one — nothing was attempted.
+ */
+type HandlerOutcome =
+  | { readonly result: ToolResult; readonly transactionHash?: string }
+  | { readonly unconfirmed: string };
 
 /**
  * Wraps a tool handler with the two things every tool needs: a scope check
@@ -155,9 +176,9 @@ function guard<Args>(
   context: ToolContext,
   tool: string,
   required: Scope,
-  handler: (args: Args) => Promise<HandlerOutcome>,
+  handler: (args: Args, ctx: RequestContext) => Promise<HandlerOutcome>,
 ) {
-  return async (args: Args): Promise<ToolResult> => {
+  return async (args: Args, ctx: RequestContext): Promise<ToolResult> => {
     const startedAt = Date.now();
     const scopes = context.authInfo?.scopes ?? [];
 
@@ -188,7 +209,16 @@ function guard<Args>(
     }
 
     try {
-      const outcome = await handler(args);
+      const outcome = await handler(args, ctx);
+
+      // Recorded as a denial rather than a success: nothing reached the chain,
+      // and an auditor needs to see the attempt as well as any approval that
+      // follows it.
+      if ('unconfirmed' in outcome) {
+        finish('denied', { reason: 'awaiting confirmation' });
+        return { content: [{ type: 'text', text: outcome.unconfirmed }], isError: true };
+      }
+
       finish(
         'success',
         outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {},

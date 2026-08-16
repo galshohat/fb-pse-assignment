@@ -57,7 +57,7 @@ function issue(store: CredentialStore, args: string[]): void {
   });
 
   console.log(`
-Issued a ${role} key.
+Issued ${role === 'operator' || role === 'admin' ? 'an' : 'a'} ${role} key.
 
   id       ${id}
   scopes   ${scopesForRole(role).join(', ')}

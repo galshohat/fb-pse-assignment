@@ -7,6 +7,7 @@ import { pino } from 'pino';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditLog } from './audit.js';
+import { signConsent, type ConsentRequest } from './auth/oauth/consent.js';
 import { TodoOAuthProvider } from './auth/oauth/provider.js';
 import { createOAuthRoutes } from './auth/oauth/router.js';
 import { CredentialStore, generateSecret, hashSecret } from './auth/store.js';
@@ -133,6 +134,18 @@ function rpc(key: string | undefined, body: Record<string, unknown>) {
   return call.send(body);
 }
 
+/** The hidden fields the consent page carries, signed the way the page signs them. */
+function formFields(request: ConsentRequest): Record<string, string> {
+  return {
+    client_id: request.clientId,
+    redirect_uri: request.redirectUri,
+    code_challenge: request.codeChallenge,
+    state: request.state ?? '',
+    resource: request.resource ?? '',
+    signature: signConsent(request),
+  };
+}
+
 /** Responses arrive as server-sent events; this pulls the JSON-RPC payload out. */
 function payload(text: string): { result?: Record<string, unknown> } {
   const line = text.split('\n').find((candidate) => candidate.startsWith('data: '));
@@ -188,6 +201,43 @@ describe('authentication', () => {
     expect(response.body.scopes_supported).toEqual(
       expect.arrayContaining(['tasks:read', 'tasks:write']),
     );
+  });
+
+  it('returns an iss identical to the advertised issuer, as RFC 9207 requires', async () => {
+    const metadata = await request(server)
+      .get('/.well-known/oauth-authorization-server')
+      .expect(200);
+
+    const client = await request(server)
+      .post('/register')
+      .send({
+        client_name: 'issuer check',
+        redirect_uris: ['http://localhost:9876/callback'],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+      })
+      .expect(201);
+
+    const consent: ConsentRequest = {
+      clientId: client.body.client_id,
+      clientName: '',
+      redirectUri: 'http://localhost:9876/callback',
+      codeChallenge: 'x'.repeat(43),
+    };
+
+    const granted = await request(server)
+      .post('/oauth/consent')
+      .type('form')
+      .send({ ...consent, ...formFields(consent), decision: 'allow', role: 'viewer' })
+      .expect(302);
+
+    const issued = new URL(granted.headers['location'] as string);
+
+    // Compared as strings on purpose. A client is entitled to do exactly this,
+    // and `http://localhost:3001` and `http://localhost:3001/` are the same URL
+    // but not the same string — which is how the mismatch went unnoticed.
+    expect(issued.searchParams.get('iss')).toBe(metadata.body.issuer);
   });
 });
 

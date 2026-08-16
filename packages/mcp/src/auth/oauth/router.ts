@@ -31,7 +31,13 @@ export function createOAuthRoutes(options: OAuthRoutesOptions): RequestHandler[]
     resourceName: 'Blockchain TODO list',
   });
 
-  return [sdkRouter, createConsentRoute({ provider, store, issuerUrl, logger })];
+  // RFC 9207 requires the `iss` we return to be byte-identical to the issuer
+  // in the discovery metadata, and the SDK derives that one through `URL`,
+  // which appends the root path. Normalizing the same way here keeps a client
+  // that compares the two strings literally from rejecting our response.
+  const issuerIdentifier = new URL(issuerUrl).href;
+
+  return [sdkRouter, createConsentRoute({ provider, store, issuerUrl: issuerIdentifier, logger })];
 }
 
 function createConsentRoute({ provider, store, issuerUrl, logger }: OAuthRoutesOptions): Router {
